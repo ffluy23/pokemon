@@ -1,92 +1,55 @@
+import { db } from "./firebase.js";
 import { 
-  getFirestore, 
-  doc, 
-  getDoc,
-  updateDoc,
-  onSnapshot
+    doc, 
+    onSnapshot 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+/**
+ * HTML에서 호출하는 메인 함수
+ * @param {string} roomId - "battleroom1"과 같은 방 아이디
+ */
+export function loadBattle(roomId) {
+    // 1. 해당 방의 참조(Reference) 생성
+    const roomRef = doc(db, "rooms", roomId);
 
+    console.log(`${roomId} 데이터를 불러오는 중...`);
 
-// 이미 초기화된 firebase 사용
-const db = getFirestore();
-const auth = getAuth();
+    // 2. 실시간 데이터 감시 (onSnapshot)
+    // 데이터가 변경될 때마다 이 내부 코드가 자동으로 실행됨
+    onSnapshot(roomRef, (snap) => {
+        if (!snap.exists()) {
+            console.error("방 정보를 찾을 수 없습니다.");
+            return;
+        }
 
+        const room = snap.data();
 
-// 현재 방 이름 (battleroom1.html → battleroom1)
-const roomId = location.pathname
-  .split("/")
-  .pop()
-  .replace(".html","");
+        // --- 플레이어 1 정보 업데이트 ---
+        const p1NameDisplay = document.getElementById("player1_name");
+        const p1HpDisplay = document.getElementById("player1_hp");
 
-const roomRef = doc(db,"rooms",roomId);
+        if (p1NameDisplay) {
+            // 이름이 없으면 "대기 중..." 표시
+            p1NameDisplay.innerText = room.player1_name || "대기 중...";
+        }
+        if (p1HpDisplay) {
+            // HP가 undefined거나 null이면 0으로 표시
+            p1HpDisplay.innerText = room.player1_hp ?? 0;
+        }
 
+        // --- 플레이어 2 정보 업데이트 ---
+        const p2NameDisplay = document.getElementById("player2_name");
+        const p2HpDisplay = document.getElementById("player2_hp");
 
-// users에서 hp 가져오기
-async function getUserHP(uid){
+        if (p2NameDisplay) {
+            p2NameDisplay.innerText = room.player2_name || "대기 중...";
+        }
+        if (p2HpDisplay) {
+            p2HpDisplay.innerText = room.player2_hp ?? 0;
+        }
 
-  const userRef = doc(db,"users",uid);
-  const userSnap = await getDoc(userRef);
-
-  if(!userSnap.exists()) return null;
-
-  return userSnap.data().entry[0].hp;
-}
-
-
-// 방에 hp 복사
-async function setHP(){
-
-  const user = auth.currentUser;
-  if(!user) return;
-
-  const uid = user.uid;
-
-  const roomSnap = await getDoc(roomRef);
-  const room = roomSnap.data();
-
-  const hp = await getUserHP(uid);
-
-  if(uid === room.player1_uid && room.player1_hp === null){
-
-    await updateDoc(roomRef,{
-      player1_hp: hp
+        console.log("데이터 업데이트 완료:", room);
+    }, (error) => {
+        console.error("실시간 감시 중 오류 발생:", error);
     });
-
-  }
-
-  if(uid === room.player2_uid && room.player2_hp === null){
-
-    await updateDoc(roomRef,{
-      player2_hp: hp
-    });
-
-  }
-
 }
-
-
-// 화면 표시
-onSnapshot(roomRef,(snapshot)=>{
-
-  const data = snapshot.data();
-  if(!data) return;
-
-  document.getElementById("player1_name").innerText =
-    data.player1_name ?? "Waiting";
-
-  document.getElementById("player1_hp").innerText =
-    data.player1_hp ?? "-";
-
-  document.getElementById("player2_name").innerText =
-    data.player2_name ?? "Waiting";
-
-  document.getElementById("player2_hp").innerText =
-    data.player2_hp ?? "-";
-
-});
-
-
-// 실행
-setHP();
