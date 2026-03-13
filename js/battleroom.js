@@ -1,108 +1,123 @@
-import { db, auth } from "./firebase.js";
-import { doc, onSnapshot, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { auth, db } from "./firebase.js"
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 
-export function loadBattle(roomId) {
-    const roomRef = doc(db, "rooms", roomId);
+// ROOM_ID는 외부에서 정의되어 있다고 가정하거나 window.location 등으로 가져와야 함
+const ROOM_ID = "battleroom1"; 
+const roomRef = doc(db, "rooms", ROOM_ID)
 
-    onAuthStateChanged(auth, async (user) => {
-        if (!user) return;
+let mySlot = null
+let myUid = null
 
-        const roomSnap = await getDoc(roomRef);
-        const roomData = roomSnap.data();
-        if (!roomData) return;
+onAuthStateChanged(auth, async (user) => {
+    if (!user) return
+    myUid = user.uid
 
-        // 내가 P1인지 P2인지 판별 (대기실 UID 기준)
-        const mySlot = roomData.player1_uid === user.uid ? "player1" : "player2";
-        const myPrefix = mySlot === "player1" ? "p1" : "p2";
+    await joinRoom()
+    listenRoom()
+    setupButtons()
+})
 
-        // [최초 1회] 내 엔트리 전체 복사
-        if (!roomData[`${myPrefix}_entry`]) {
-            const userDoc = await getDoc(doc(db, "users", user.uid));
-            const myEntry = userDoc.data().entry; // [ {name, hp}, ... ]
+async function joinRoom() {
+    const userDoc = await getDoc(doc(db, "users", myUid))
+    const nickname = userDoc.data().nickname
 
-            await updateDoc(roomRef, {
-                [`${myPrefix}_entry`]: myEntry,
-                [`${myPrefix}_active_idx`]: 0 // 0번 선두
-            });
-        }
+    const roomSnap = await getDoc(roomRef)
+    const room = roomSnap.data()
 
-        setupControls(mySlot, roomRef);
-    });
+    if (room.player1_uid === myUid) {
+        mySlot = "player1"
+        return
+    }
+    if (room.player2_uid === myUid) {
+        mySlot = "player2"
+        return
+    }
 
-    // 실시간 화면 업데이트
-    onSnapshot(roomRef, (snap) => {
-        const room = snap.data();
-        if (!room) return;
-
-        // Player 1 정보 업데이트
-        if (room.p1_entry) {
-            updatePlayerUI("player1", room);
-        }
-
-        // Player 2 정보 업데이트
-        if (room.p2_entry) {
-            updatePlayerUI("player2", room);
-        }
-    });
-}
-
-function updatePlayerUI(slot, room) {
-    const prefix = slot === "player1" ? "p1" : "p2";
-    const entry = room[`${prefix}_entry`];
-    const idx = room[`${prefix}_active_idx`] || 0;
-    const activePkmn = entry[idx];
-
-    // 기본 이름/HP 표시
-    document.getElementById(`${slot}_name`).innerText = room[`${slot}_name`] || "대기...";
-    document.getElementById(`${slot}_active_name`).innerText = activePkmn.name;
-    document.getElementById(`${slot}_hp`).innerText = activePkmn.hp;
-    document.getElementById(`${slot === "player1" ? "p1" : "p2"}-max-hp`).innerText = "100"; // 기본값 100
-
-    // 내가 P1일 때 내 버튼들 업데이트
-    const currentUser = auth.currentUser;
-    const isMe = (slot === "player1" && room.player1_uid === currentUser?.uid) || 
-                 (slot === "player2" && room.player2_uid === currentUser?.uid);
-
-    if (isMe) {
-        const btnArea = document.getElementById("p1-bench-btns");
-        btnArea.innerHTML = ""; // 초기화
-        entry.forEach((pkmn, i) => {
-            if (i !== idx) {
-                const btn = document.createElement("button");
-                btn.innerText = `${pkmn.name} 교체`;
-                btn.onclick = () => switchPokemon(prefix, i, doc(db, "rooms", "battleroom1")); // 실제 룸ID로 교체필요
-                btnArea.appendChild(btn);
-            }
-        });
-    } else {
-        // 상대방 대기 정보는 텍스트로
-        const benchArea = document.getElementById(`${prefix}-bench`);
-        const bench = entry.filter((_, i) => i !== idx).map(p => p.name).join(", ");
-        benchArea.innerText = "대기: " + (bench || "없음");
+    if (!room.player1_uid) {
+        await updateDoc(roomRef, {
+            player1_uid: myUid,
+            player1_name: nickname
+        })
+        mySlot = "player1"
+    } else if (!room.player2_uid) {
+        await updateDoc(roomRef, {
+            player2_uid: myUid,
+            player2_name: nickname
+        })
+        mySlot = "player2"
     }
 }
 
-async function switchPokemon(prefix, newIdx, roomRef) {
-    await updateDoc(roomRef, { [`${prefix}_active_idx`]: newIdx });
+function listenRoom() {
+    // 트리거 체크를 위해 snapshot 내에서 async/await 사용
+    onSnapshot(roomRef, async (snap) => {
+        const room = snap.data()
+        if (!room) return
+
+        document.getElementById("player1").innerText =
+            "Player1: " + (room.player1_name ?? "대기...")
+        document.getElementById("player2").innerText =
+            "Player2: " + (room.player2_name ?? "대기...")
+
+        // [핵심 트리거] 둘 다 레디했고, 아직 게임이 시작되지 않았을 때
+        if (room.player1_ready && room.player2_ready && !room.game_started) {
+            
+            // 데이터 복사 중복 실행 방지를 위해 즉시 로컬 플래그 처리 효과를 주거나,
+            // 한 사람(보통 p1)만 복사 로직을 수행하도록 제한하는 것이 좋음
+            if (mySlot === "player1") {
+                console.log("전투 데이터 복사 시작...");
+
+                // 1. 각 유저의 원본 entry 데이터 가져오기
+                const p1Doc = await getDoc(doc(db, "users", room.player1_uid));
+                const p2Doc = await getDoc(doc(db, "users", room.player2_uid));
+
+                // 2. rooms 문서에 배틀용 데이터 복사 (원본 보존)
+                await updateDoc(roomRef, {
+                    p1_entry: p1Doc.data().entry, // [ {name, hp}, ... ]
+                    p2_entry: p2Doc.data().entry,
+                    p1_active_idx: 0, // 선두 0번
+                    p2_active_idx: 0,
+                    game_started: true // 모든 데이터 세팅 후 시작 플래그 ON
+                });
+            }
+        }
+
+        // 게임 시작 플래그가 켜지면 페이지 이동
+        if (room.game_started) {
+            const roomNumber = ROOM_ID.replace("battleroom", "")
+            location.href = `../games/battleroom${roomNumber}.html`
+        }
+    })
 }
 
-function setupControls(mySlot, roomRef) {
-    document.getElementById("attackBtn").onclick = async () => {
-        const snap = await getDoc(roomRef);
-        const data = snap.data();
-        
-        const myPrefix = mySlot === "player1" ? "p1" : "p2";
-        const enemyPrefix = mySlot === "player1" ? "p2" : "p1";
-        
-        if (!data[`${enemyPrefix}_entry`]) return;
+function setupButtons() {
+    document.getElementById("readyBtn").onclick = async () => {
+        if (mySlot === "player1") {
+            await updateDoc(roomRef, { player1_ready: true })
+        }
+        if (mySlot === "player2") {
+            await updateDoc(roomRef, { player2_ready: true })
+        }
+    }
 
-        const enemyEntry = [...data[`${enemyPrefix}_entry`]];
-        const enemyIdx = data[`${enemyPrefix}_active_idx`];
+    document.getElementById("leaveBtn").onclick = leaveRoom
+}
 
-        // 대미지 20 감소
-        enemyEntry[enemyIdx].hp = Math.max(0, enemyEntry[enemyIdx].hp - 20);
-
-        await updateDoc(roomRef, { [`${enemyPrefix}_entry`]: enemyEntry });
-    };
+async function leaveRoom() {
+    if (mySlot === "player1") {
+        await updateDoc(roomRef, {
+            player1_uid: null,
+            player1_name: null,
+            player1_ready: false
+        })
+    }
+    if (mySlot === "player2") {
+        await updateDoc(roomRef, {
+            player2_uid: null,
+            player2_name: null,
+            player2_ready: false
+        })
+    }
+    location.href = "../main.html"
 }
