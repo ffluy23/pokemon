@@ -7,30 +7,50 @@
 
 <body>
 
-<h1>엔트리 1 테스트</h1>
-
-<div id="gameArea">
-<h2 id="player1_name"></h2>
-<div id="player1_active_name"></div>
-<div id="player1_hp"></div>
-<div id="p1-bench"></div>
-
-<hr>
-
-<h2 id="player2_name"></h2>
-<div id="player2_active_name"></div>
-<div id="player2_hp"></div>
-<div id="p2-bench"></div>
-
-<button id="attackBtn">공격</button>
-    
-</div>
-
-
-<script type="module">
-    import { loadBattle } from "../js/battle.js";
-    loadBattle("battleroom1");
-</script>
+<!-- 플레이어 이름 -->
+  <div>
+    <span id="p1-name">Player1</span>
+    vs
+    <span id="p2-name">Player2</span>
+  </div>
+ 
+  <hr>
+ 
+  <!-- 상대 포켓몬 -->
+  <div>
+    <h3>상대 포켓몬</h3>
+    <p id="enemy-active-name">-</p>
+    <p id="enemy-active-hp">HP: - / 100</p>
+  </div>
+ 
+  <hr>
+ 
+  <!-- 내 포켓몬 -->
+  <div>
+    <h3>내 포켓몬</h3>
+    <p id="my-active-name">-</p>
+    <p id="my-active-hp">HP: - / 100</p>
+  </div>
+ 
+  <!-- 행동 버튼 -->
+  <div>
+    <button id="attackBtn">공격</button>
+  </div>
+ 
+  <!-- 교체 버튼 (battle.js가 동적으로 생성) -->
+  <div>
+    <h4>교체할 포켓몬</h4>
+    <div id="bench-container"></div>
+  </div>
+ 
+  <script type="module">
+    // ROOM_ID는 파일명에서 자동으로 가져옴
+    const ROOM_ID = "battleroom1"
+    window.ROOM_ID = ROOM_ID
+ 
+    import { loadBattle } from "../js/battle.js" // 경로는 프로젝트에 맞게 수정
+    // loadBattle 대신 battle.js가 ROOM_ID를 window에서 읽도록 구성했으므로 그냥 import만 해도 됨
+  </script>
 
 
 </body>
