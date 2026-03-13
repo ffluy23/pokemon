@@ -10,21 +10,22 @@
 <h1>배틀룸 1 테스트</h1>
 
 <div id="gameArea">
+    <h2 id="player1_name"></h2>
+    <div>HP: <span id="player1_hp"></span> / <span id="p1-max-hp"></span></div>
 
-<h2 id="player1_name"></h2>
-<div>HP: <span id="player1_hp"></span></div>
+    <h2 id="player2_name"></h2>
+    <div>HP: <span id="player2_hp"></span> / <span id="p2-max-hp"></span></div>
 
-<h2 id="player2_name"></h2>
-<div>HP: <span id="player2_hp"></span></div>
-
+    <hr>
+    <div id="controls">
+        <button id="attackBtn">공격 (40 데미지)</button>
+        <button id="healBtn">치유 (20 회복)</button>
+    </div>
 </div>
 
 <script type="module">
-
-import { loadBattle } from "../js/battle.js"
-
-loadBattle("battleroom1")
-
+    import { loadBattle } from "../js/battle.js";
+    loadBattle("battleroom1");
 </script>
 
 </body>
