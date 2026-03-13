@@ -2,6 +2,7 @@ import { db, auth } from "./firebase.js"
 import {
 doc,
 onSnapshot,
+getDoc,
 updateDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 
@@ -14,12 +15,13 @@ const p2Name = document.getElementById("p2_name")
 const turnDisplay = document.getElementById("turn_display")
 const attackBtn = document.getElementById("attackBtn")
 
-let myUid = auth.currentUser.uid
+const myUid = auth.currentUser.uid
 
 onSnapshot(roomRef,(snap)=>{
 
 const data = snap.data()
 
+// 이름 표시
 p1Name.innerText = data.player1_name
 p2Name.innerText = data.player2_name
 
@@ -41,7 +43,7 @@ attackBtn.style.display = "none"
 
 attackBtn.onclick = async ()=>{
 
-const snap = await roomRef.get()
+const snap = await getDoc(roomRef)
 const data = snap.data()
 
 let nextTurn
@@ -52,7 +54,6 @@ nextTurn = data.player2_uid
 nextTurn = data.player1_uid
 }
 
-// 턴 넘기기
 await updateDoc(roomRef,{
 turn: nextTurn
 })
