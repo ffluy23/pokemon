@@ -1,76 +1,155 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"
+import { auth, db } from "./firebase.js"
+
 import {
-getFirestore,
+onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+
+import {
 doc,
-onSnapshot,
-updateDoc
+getDoc,
+updateDoc,
+onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 
-const firebaseConfig = {
-  // 너 firebase config
+const roomRef = doc(db,"rooms",ROOM_ID)
+
+let mySlot=null
+let myUid=null
+
+onAuthStateChanged(auth, async (user)=>{
+
+if(!user) return
+
+myUid=user.uid
+
+await joinRoom()
+
+listenRoom()
+
+setupButtons()
+
+})
+
+async function joinRoom(){
+
+const userDoc = await getDoc(doc(db,"users",myUid))
+const nickname=userDoc.data().nickname
+
+const roomSnap = await getDoc(roomRef)
+const room=roomSnap.data()
+
+if(room.player1_uid === myUid){
+mySlot="player1"
+return
 }
 
-const app = initializeApp(firebaseConfig)
-const db = getFirestore(app)
+if(room.player2_uid === myUid){
+mySlot="player2"
+return
+}
 
-let roomRef
-let myPlayer = "player1" // 테스트용
+if(!room.player1_uid){
 
-export function loadBattle(roomId){
+await updateDoc(roomRef,{
+player1_uid:myUid,
+player1_name:nickname
+})
 
-roomRef = doc(db,"battleroom",roomId)
+mySlot="player1"
 
-const attackBtn = document.getElementById("attackBtn")
+}else if(!room.player2_uid){
 
-attackBtn.onclick = attack
+await updateDoc(roomRef,{
+player2_uid:myUid,
+player2_name:nickname
+})
+
+mySlot="player2"
+
+}
+
+}
+
+function listenRoom(){
 
 onSnapshot(roomRef,(snap)=>{
 
-const data = snap.data()
+const room=snap.data()
 
-document.getElementById("p1_name").innerText = data.player1_name
-document.getElementById("p2_name").innerText = data.player2_name
+document.getElementById("player1").innerText =
+"Player1: "+(room.player1_name ?? "대기...")
 
-document.getElementById("p1_hp").innerText = data.player1_hp
-document.getElementById("p2_hp").innerText = data.player2_hp
+document.getElementById("player2").innerText =
+"Player2: "+(room.player2_name ?? "대기...")
 
-document.getElementById("turnText").innerText = "현재 턴 : " + data.turn
+if(room.player1_ready && room.player2_ready && !room.game_started){
 
-if(data.turn === myPlayer){
-attackBtn.disabled = false
-}else{
-attackBtn.disabled = true
+updateDoc(roomRef,{
+game_started:true
+})
+
+}
+
+if(room.game_started){
+
+const roomNumber=ROOM_ID.replace("battleroom","")
+
+location.href=`../games/battleroom${roomNumber}.html`
+
 }
 
 })
 
 }
 
-async function attack(){
+function setupButtons(){
 
-const snap = await roomRef.get()
-const data = snap.data()
+document.getElementById("readyBtn").onclick=async()=>{
 
-if(data.turn !== myPlayer) return
+if(mySlot==="player1"){
 
-let damage = Math.floor(Math.random()*10)+5
-
-let updateData = {}
-
-if(myPlayer === "player1"){
-
-updateData.player2_hp = data.player2_hp - damage
-updateData.turn = "player2"
-
-}else{
-
-updateData.player1_hp = data.player1_hp - damage
-updateData.turn = "player1"
+await updateDoc(roomRef,{
+player1_ready:true
+})
 
 }
 
-updateData.last_action = myPlayer + " attack " + damage
+if(mySlot==="player2"){
 
-await updateDoc(roomRef,updateData)
+await updateDoc(roomRef,{
+player2_ready:true
+})
+
+}
+
+}
+
+document.getElementById("leaveBtn").onclick=leaveRoom
+
+}
+
+async function leaveRoom(){
+
+if(mySlot==="player1"){
+
+await updateDoc(roomRef,{
+player1_uid:null,
+player1_name:null,
+player1_ready:false
+})
+
+}
+
+if(mySlot==="player2"){
+
+await updateDoc(roomRef,{
+player2_uid:null,
+player2_name:null,
+player2_ready:false
+})
+
+}
+
+location.href="../main.html"
 
 }
