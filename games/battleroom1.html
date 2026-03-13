@@ -21,11 +21,75 @@
 
 </div>
 
+<button id="leaveBtn">Leave</button>
+
 <script type="module">
 
 import { loadBattle } from "../js/battle.js"
+import { auth, db } from "../js/firebase.js"
 
-loadBattle("battleroom1")
+import {
+onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+
+import {
+doc,
+getDoc,
+updateDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+
+const ROOM_ID = "battleroom1"
+
+loadBattle(ROOM_ID)
+
+const roomRef = doc(db,"rooms",ROOM_ID)
+
+let myUid=null
+let mySlot=null
+
+onAuthStateChanged(auth, async(user)=>{
+
+if(!user) return
+
+myUid=user.uid
+
+const roomSnap = await getDoc(roomRef)
+const room = roomSnap.data()
+
+if(room.player1_uid===myUid) mySlot="player1"
+if(room.player2_uid===myUid) mySlot="player2"
+
+})
+
+document.getElementById("leaveBtn").onclick = leaveRoom
+
+async function leaveRoom(){
+
+if(mySlot==="player1"){
+
+await updateDoc(roomRef,{
+player1_uid:null,
+player1_name:null,
+player1_ready:false,
+game_started:false
+})
+
+}
+
+if(mySlot==="player2"){
+
+await updateDoc(roomRef,{
+player2_uid:null,
+player2_name:null,
+player2_ready:false,
+game_started:false
+})
+
+}
+
+location.href="../main.html"
+
+}
 
 </script>
 
