@@ -10,45 +10,25 @@
 <h1>배틀룸 1 테스트</h1>
 
 <div id="gameArea">
-<div id="battle-container">
-    <div class="side opponent">
-        <h3 id="p2-name">상대방 대기 중...</h3>
-        <div id="p2-active-box">
-            <p id="p2-active-name">-</p>
-            <progress id="p2-hp-bar" value="100" max="100"></progress>
-            <span id="p2-hp-text">0/0</span>
-        </div>
-    </div>
+<div id="gameArea">
+    <h2 id="player1_name"></h2>
+    <div>HP: <span id="player1_hp"></span> / <span id="p1-max-hp"></span></div>
+
+    <h2 id="player2_name"></h2>
+    <div>HP: <span id="player2_hp"></span> / <span id="p2-max-hp"></span></div>
 
     <hr>
-
-    <div class="side player">
-        <h3 id="p1-name">내 이름</h3>
-        <div id="p1-active-box">
-            <strong id="p1-active-name">포켓몬 불러오는 중...</strong>
-            <progress id="p1-hp-bar" value="100" max="100"></progress>
-            <span id="p1-hp-text">0/0</span>
-        </div>
-
-        <div id="bench-area">
-            <p>교체하기:</p>
-            <button id="btn-pkmn-1" onclick="switchPokemon(1)">대기 1</button>
-            <button id="btn-pkmn-2" onclick="switchPokemon(2)">대기 2</button>
-        </div>
-        
-        <div id="control-area">
-            <button onclick="attack()">공격!</button>
-        </div>
+    <div id="controls">
+        <button id="attackBtn">공격 (40 데미지)</button>
+        <button id="healBtn">치유 (20 회복)</button>
     </div>
-</div>
-
-
 </div>
 
 <script type="module">
     import { loadBattle } from "../js/battle.js";
     loadBattle("battleroom1");
 </script>
+
 
 </body>
 </html>
