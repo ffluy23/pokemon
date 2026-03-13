@@ -16,8 +16,6 @@ const roomRef = doc(db,"rooms",ROOM_ID)
 let mySlot=null
 let myUid=null
 
-
-
 onAuthStateChanged(auth, async (user)=>{
 
 if(!user) return
@@ -31,8 +29,6 @@ listenRoom()
 setupButtons()
 
 })
-
-
 
 async function joinRoom(){
 
@@ -74,69 +70,40 @@ mySlot="player2"
 
 }
 
+function listenRoom() {
+  onSnapshot(roomRef, async (snap) => { // async 추가
+    const room = snap.data();
+    if (!room) return;
 
+    // UI 업데이트 로직 (생략)
+    document.getElementById("player1").innerText = "Player1: " + (room.player1_name ?? "대기...");
+    document.getElementById("player2").innerText = "Player2: " + (room.player2_name ?? "대기...");
 
-function listenRoom(){
+    // 양쪽 모두 레디했고, 아직 게임이 시작되지 않았을 때
+    if (room.player1_ready && room.player2_ready && !room.game_started) {
+      
+      // 1. 각 유저의 entry 데이터를 가져오기
+      const p1Doc = await getDoc(doc(db, "users", room.player1_uid));
+      const p2Doc = await getDoc(doc(db, "users", room.player2_uid));
 
-onSnapshot(roomRef, async (snap)=>{
+      const p1Entry = p1Doc.exists() ? p1Doc.data().entry : [];
+      const p2Entry = p2Doc.exists() ? p2Doc.data().entry : [];
 
-const room=snap.data()
-if(!room) return
+      // 2. 방 데이터에 유저 데이터 복사 및 게임 시작 처리
+      await updateDoc(roomRef, {
+        player1_entry: p1Entry, // 유저1의 entry 배열(map 포함) 통째로 복사
+        player2_entry: p2Entry, // 유저2의 entry 배열(map 포함) 통째로 복사
+        game_started: true
+      });
+    }
 
-document.getElementById("player1").innerText =
-"Player1: "+(room.player1_name ?? "대기...")
-
-document.getElementById("player2").innerText =
-"Player2: "+(room.player2_name ?? "대기...")
-
-
-// 둘 다 ready → battle 시작
-if(room.player1_ready && room.player2_ready && !room.game_started && mySlot==="player1"){
-
-await startBattle(room)
-
+    // 게임 시작 시 페이지 이동
+    if (room.game_started) {
+      const roomNumber = ROOM_ID.replace("battleroom", "");
+      location.href = `../games/battleroom${roomNumber}.html`;
+    }
+  });
 }
-
-
-// battle 시작되면 페이지 이동
-if(room.game_started){
-
-const roomNumber=ROOM_ID.replace("battleroom","")
-
-location.href=`../games/battleroom${roomNumber}.html`
-
-}
-
-})
-
-}
-
-
-
-async function startBattle(room){
-
-// player1 entry
-const p1Doc = await getDoc(doc(db,"users",room.player1_uid))
-const p1Entry = Object.values(p1Doc.data().entry)
-
-// player2 entry
-const p2Doc = await getDoc(doc(db,"users",room.player2_uid))
-const p2Entry = Object.values(p2Doc.data().entry)
-
-await updateDoc(roomRef,{
-
-p1_entry:p1Entry,
-p2_entry:p2Entry,
-
-p1_active_idx:0,
-p2_active_idx:0,
-
-game_started:true
-
-})
-
-}
-
 
 
 function setupButtons(){
@@ -164,8 +131,6 @@ player2_ready:true
 document.getElementById("leaveBtn").onclick=leaveRoom
 
 }
-
-
 
 async function leaveRoom(){
 
