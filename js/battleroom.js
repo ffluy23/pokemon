@@ -1,6 +1,10 @@
 import { auth, db } from "./firebase.js"
 
 import {
+onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+
+import {
 doc,
 getDoc,
 updateDoc,
@@ -10,21 +14,44 @@ onSnapshot
 const roomRef = doc(db,"rooms",ROOM_ID)
 
 let mySlot=null
+let myUid=null
+
+onAuthStateChanged(auth, async (user)=>{
+
+if(!user) return
+
+myUid=user.uid
+
+await joinRoom()
+
+listenRoom()
+
+setupButtons()
+
+})
 
 async function joinRoom(){
 
-const user = auth.currentUser
-
-const userDoc = await getDoc(doc(db,"users",user.uid))
-const nickname = userDoc.data().nickname
+const userDoc = await getDoc(doc(db,"users",myUid))
+const nickname=userDoc.data().nickname
 
 const roomSnap = await getDoc(roomRef)
-const room = roomSnap.data()
+const room=roomSnap.data()
+
+if(room.player1_uid === myUid){
+mySlot="player1"
+return
+}
+
+if(room.player2_uid === myUid){
+mySlot="player2"
+return
+}
 
 if(!room.player1_uid){
 
 await updateDoc(roomRef,{
-player1_uid:user.uid,
+player1_uid:myUid,
 player1_name:nickname
 })
 
@@ -33,7 +60,7 @@ mySlot="player1"
 }else if(!room.player2_uid){
 
 await updateDoc(roomRef,{
-player2_uid:user.uid,
+player2_uid:myUid,
 player2_name:nickname
 })
 
@@ -43,7 +70,7 @@ mySlot="player2"
 
 }
 
-joinRoom()
+function listenRoom(){
 
 onSnapshot(roomRef,(snap)=>{
 
@@ -73,6 +100,10 @@ location.href=`../games/battleroom${roomNumber}.html`
 
 })
 
+}
+
+function setupButtons(){
+
 document.getElementById("readyBtn").onclick=async()=>{
 
 if(mySlot==="player1"){
@@ -93,9 +124,11 @@ player2_ready:true
 
 }
 
-document.getElementById("leaveBtn").onclick=async()=>{
+document.getElementById("leaveBtn").onclick=leaveRoom
 
-const user = auth.currentUser
+}
+
+async function leaveRoom(){
 
 if(mySlot==="player1"){
 
