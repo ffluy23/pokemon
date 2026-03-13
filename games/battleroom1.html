@@ -2,23 +2,23 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>battle room 1</title>
+<title>battle room</title>
 </head>
 
 <body>
 
-<h1>배틀룸 1 테스트</h1>
+<h1>배틀 테스트</h1>
 
 <div id="gameArea">
 
-<div id="player1">
+<div>
 <h2 id="p1_name"></h2>
 HP : <span id="p1_hp"></span>
 </div>
 
 <br>
 
-<div id="player2">
+<div>
 <h2 id="p2_name"></h2>
 HP : <span id="p2_hp"></span>
 </div>
@@ -32,8 +32,11 @@ HP : <span id="p2_hp"></span>
 </div>
 
 <script type="module">
+
 import { loadBattle } from "../js/battle.js"
+
 loadBattle("battleroom1")
+
 </script>
 
 </body>
