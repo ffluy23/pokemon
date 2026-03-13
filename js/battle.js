@@ -10,70 +10,89 @@ export function loadBattle(roomId) {
     onAuthStateChanged(auth, async (user) => {
         if (!user) return;
 
-        // [최초 1회] 유저 데이터 복사해오기
+        // 1. 현재 로그인한 유저의 정보(엔트리 3마리) 가져오기
         const userDoc = await getDoc(doc(db, "users", user.uid));
-        const userData = userDoc.data();
-        const myPokemon = userData.entry[0]; // 0번 포켓몬
+        if (!userDoc.exists()) return;
+        
+        const userEntry = userDoc.data().entry; // [{name:.., hp:..}, {name:.., hp:..}, {name:.., hp:..}]
 
+        // 2. 현재 방 데이터 확인
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
+        if (!roomData) return;
+
+        // 3. 내가 Player1인지 Player2인지 확인
         const mySlot = roomData.player1_uid === user.uid ? "player1" : "player2";
 
-        // 방에 내 HP 정보가 아직 없으면(최초 진입) 복사 실행
-        if (roomData[`${mySlot}_hp`] === undefined || roomData[`${mySlot}_hp`] === 0) {
+        // 4. [최초 복사] 해당 슬롯의 엔트리가 비어있다면 전체 복사
+        if (!roomData[`${mySlot}_entry` Marc]) { // <--- 만약 'Marc'가 보이면 지워줘! `${mySlot}_entry` 가 맞음
             await updateDoc(roomRef, {
-                [`${mySlot}_name`]: myPokemon.name,
-                [`${mySlot}_hp`]: myPokemon.hp,      // 현재 체력으로 쓸 복사본
-                [`${mySlot}_maxHp`]: myPokemon.hp   // 최대 체력 제한용
+                [`${mySlot}_entry`]: userEntry,
+                [`${mySlot}_active_idx`]: 0 // 첫 번째 포켓몬으로 시작
             });
         }
 
+        // 버튼 클릭 시 작동할 공격/치유 로직 연결
         setupControls(mySlot, roomRef);
     });
 
-    // 실시간 화면 업데이트
+    // 5. 실시간 데이터 감시 및 화면 업데이트
     onSnapshot(roomRef, (snap) => {
         const room = snap.data();
         if (!room) return;
 
-        // 플레이어 1 UI
-        document.getElementById("player1_name").innerText = room.player1_name || "대기...";
-        document.getElementById("player1_hp").innerText = room.player1_hp ?? 0;
-        document.getElementById("p1-max-hp").innerText = room.player1_maxHp ?? 0;
-
-        // 플레이어 2 UI
-        document.getElementById("player2_name").innerText = room.player2_name || "대기...";
-        document.getElementById("player2_hp").innerText = room.player2_hp ?? 0;
-        document.getElementById("p2-max-hp").innerText = room.player2_maxHp ?? 0;
+        // 두 플레이어 모두의 정보를 업데이트
+        ["player1", "player2"].forEach(slot => {
+            const entry = room[`${slot}_entry`];
+            const idx = room[`${slot}_active_idx`] ?? 0;
+            
+            // 엔트리 정보가 있고 해당 순서의 포켓몬이 존재하면 화면에 출력
+            if (entry && entry[idx]) {
+                const pokemon = entry[idx];
+                const nameTag = document.getElementById(`${slot}_name`);
+                const hpTag = document.getElementById(`${slot}_hp`);
+                
+                if (nameTag) nameTag.innerText = pokemon.name;
+                if (hpTag) hpTag.innerText = pokemon.hp;
+            }
+        });
     });
 }
 
 function setupControls(mySlot, roomRef) {
     const enemySlot = mySlot === "player1" ? "player2" : "player1";
 
-    // 공격 버튼: 상대방 HP를 깎음
+    // 공격 버튼: 상대방 현재 포켓몬 HP 깎기
     document.getElementById("attackBtn").onclick = async () => {
         const snap = await getDoc(roomRef);
         const data = snap.data();
-        const enemyHp = data[`${enemySlot}_hp`] ?? 0;
+        
+        const enemyEntry = [...(data[`${enemySlot}_entry`] || [])];
+        const enemyIdx = data[`${enemySlot}_active_idx`] ?? 0;
 
-        await updateDoc(roomRef, {
-            [`${enemySlot}_hp`]: Math.max(0, enemyHp - 40)
-        });
+        if (enemyEntry[enemyIdx]) {
+            enemyEntry[enemyIdx].hp = Math.max(0, enemyEntry[enemyIdx].hp - 40);
+            await updateDoc(roomRef, {
+                [`${enemySlot}_entry`]: enemyEntry
+            });
+        }
     };
 
-    // 치유 버튼: 내 HP를 채움 (최대 체력까지만)
+    // 치유 버튼: 내 현재 포켓몬 HP 회복
     document.getElementById("healBtn").onclick = async () => {
         const snap = await getDoc(roomRef);
         const data = snap.data();
-        const myHp = data[`${mySlot}_hp`] ?? 0;
-        const myMaxHp = data[`${mySlot}_maxHp`] ?? 0;
+        
+        const myEntry = [...(data[`${mySlot}_entry`] || [])];
+        const myIdx = data[`${mySlot}_active_idx`] ?? 0;
 
-        // 회복 후 체력이 maxHp를 넘지 않게 계산
-        const healedHp = Math.min(myMaxHp, myHp + 20);
-
-        await updateDoc(roomRef, {
-            [`${mySlot}_hp`]: healedHp
-        });
+        if (myEntry[myIdx]) {
+            // 현재 엔트리 구조상 최대체력을 따로 안뒀으니 임시로 100 설정
+            const maxHp = 100;
+            myEntry[myIdx].hp = Math.min(maxHp, myEntry[myIdx].hp + 20);
+            await updateDoc(roomRef, {
+                [`${mySlot}_entry`]: myEntry
+            });
+        }
     };
 }
