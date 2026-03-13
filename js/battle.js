@@ -1,4 +1,3 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { 
   getFirestore, 
   doc, 
@@ -7,33 +6,24 @@ import {
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-import { 
-  getAuth 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 
-// firebase config
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+// 이미 초기화된 firebase 사용
+const db = getFirestore();
+const auth = getAuth();
 
 
-// 현재 방 이름
+// 현재 방 이름 (battleroom1.html → battleroom1)
 const roomId = location.pathname
   .split("/")
   .pop()
-  .replace(".html", "");
+  .replace(".html","");
 
-const roomRef = doc(db, "rooms", roomId);
+const roomRef = doc(db,"rooms",roomId);
 
 
-// 🔹 users에서 hp 가져오기
+// users에서 hp 가져오기
 async function getUserHP(uid){
 
   const userRef = doc(db,"users",uid);
@@ -45,7 +35,7 @@ async function getUserHP(uid){
 }
 
 
-// 🔹 방에 들어왔을 때 HP 세팅
+// 방에 hp 복사
 async function setHP(){
 
   const user = auth.currentUser;
@@ -77,7 +67,7 @@ async function setHP(){
 }
 
 
-// 🔹 화면 표시
+// 화면 표시
 onSnapshot(roomRef,(snapshot)=>{
 
   const data = snapshot.data();
