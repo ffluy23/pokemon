@@ -11,22 +11,29 @@
 
 <div id="gameArea">
 
-<h2>Player1</h2>
-<div id="p1_name"></div>
-<div id="p1_entry"></div>
+<div id="player1">
+<h2 id="p1_name"></h2>
+HP : <span id="p1_hp"></span>
+</div>
 
-<h2>Player2</h2>
-<div id="p2_name"></div>
-<div id="p2_entry"></div>
+<br>
+
+<div id="player2">
+<h2 id="p2_name"></h2>
+HP : <span id="p2_hp"></span>
+</div>
+
+<br>
+
+<h3 id="turnText"></h3>
+
+<button id="attackBtn">공격</button>
 
 </div>
 
 <script type="module">
-
 import { loadBattle } from "../js/battle.js"
-
 loadBattle("battleroom1")
-
 </script>
 
 </body>
