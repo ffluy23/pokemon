@@ -36,7 +36,7 @@ function listenRoom() {
 onSnapshot(roomRef, async (snap) => {
 const room = snap.data()
 
-```
+
 document.getElementById("player1").innerText = "Player1: " + (room.player1_name ?? "대기...")
 document.getElementById("player2").innerText = "Player2: " + (room.player2_name ?? "대기...")
 
@@ -61,7 +61,7 @@ if (room.game_started) {
   const roomNumber = ROOM_ID.replace("battleroom", "")
   location.href = `../games/battleroom${roomNumber}.html`
 }
-```
+
 
 })
 }
