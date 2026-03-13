@@ -1,12 +1,46 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <title>배틀룸1</title>
+  <style>
+    /* 배틀 로그 영역 */
+    #battle-log {
+      width: 100%;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 8px;
+      background: #f9f9f9;
+      font-size: 14px;
+    }
+    #battle-log p {
+      margin: 2px 0;
+    }
+
+```
+/* 기절 버튼 스타일 */
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 기술 버튼 */
+#move-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  max-width: 320px;
+}
+```
+
+  </style>
 </head>
 <body>
 
   <!-- 플레이어 이름 -->
+
   <div>
     <span id="p1-name">Player1</span>
     vs
@@ -16,36 +50,50 @@
   <hr>
 
   <!-- 상대 포켓몬 -->
+
   <div>
     <h3>상대 포켓몬</h3>
     <p id="enemy-active-name">-</p>
-    <p id="enemy-active-hp">HP: - / 100</p>
+    <p id="enemy-active-hp">HP: - / -</p>
   </div>
 
   <hr>
 
   <!-- 내 포켓몬 -->
+
   <div>
     <h3>내 포켓몬</h3>
     <p id="my-active-name">-</p>
-    <p id="my-active-hp">HP: - / 100</p>
+    <p id="my-active-hp">HP: - / -</p>
   </div>
 
-  <!-- 행동 버튼 -->
-  <div>
-    <button id="attackBtn">공격</button>
+  <!-- 기술 버튼 4개 -->
+
+  <div id="move-buttons">
+    <button id="move-btn-0" disabled>-</button>
+    <button id="move-btn-1" disabled>-</button>
+    <button id="move-btn-2" disabled>-</button>
+    <button id="move-btn-3" disabled>-</button>
   </div>
 
-  <!-- 교체 버튼 (battle.js가 동적으로 생성) -->
+  <!-- 교체 버튼 (동적 생성) -->
+
   <div>
     <h4>교체할 포켓몬</h4>
     <div id="bench-container"></div>
   </div>
 
-  <!-- ROOM_ID 먼저 선언 후 battle.js import -->
+  <!-- 배틀 로그 -->
+
+  <div>
+    <h4>배틀 로그</h4>
+    <div id="battle-log"></div>
+  </div>
+
   <script>
     const ROOM_ID = "battleroom1"
   </script>
+
   <script type="module" src="../js/battle.js"></script>
 
 </body>
