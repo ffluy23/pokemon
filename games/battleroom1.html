@@ -1,59 +1,52 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-<meta charset="UTF-8">
-<title>Game</title>
+  <meta charset="UTF-8">
+  <title>배틀룸1</title>
 </head>
-
 <body>
 
-<div id="gameArea">
-<!-- 플레이어 이름 -->
+  <!-- 플레이어 이름 -->
   <div>
     <span id="p1-name">Player1</span>
     vs
     <span id="p2-name">Player2</span>
   </div>
- 
+
   <hr>
- 
+
   <!-- 상대 포켓몬 -->
   <div>
     <h3>상대 포켓몬</h3>
     <p id="enemy-active-name">-</p>
     <p id="enemy-active-hp">HP: - / 100</p>
   </div>
- 
+
   <hr>
- 
+
   <!-- 내 포켓몬 -->
   <div>
     <h3>내 포켓몬</h3>
     <p id="my-active-name">-</p>
     <p id="my-active-hp">HP: - / 100</p>
   </div>
- 
+
   <!-- 행동 버튼 -->
   <div>
     <button id="attackBtn">공격</button>
   </div>
- 
+
   <!-- 교체 버튼 (battle.js가 동적으로 생성) -->
   <div>
     <h4>교체할 포켓몬</h4>
     <div id="bench-container"></div>
   </div>
-</div>
- 
-  <script type="module">
-    // ROOM_ID는 파일명에서 자동으로 가져옴
-    const ROOM_ID = "battleroom1"
-    window.ROOM_ID = ROOM_ID
- 
-    import { loadBattle } from "../js/battle.js" // 경로는 프로젝트에 맞게 수정
-    // loadBattle 대신 battle.js가 ROOM_ID를 window에서 읽도록 구성했으므로 그냥 import만 해도 됨
-  </script>
 
+  <!-- ROOM_ID 먼저 선언 후 battle.js import -->
+  <script>
+    const ROOM_ID = "battleroom1"
+  </script>
+  <script type="module" src="../js/battle.js"></script>
 
 </body>
 </html>
