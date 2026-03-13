@@ -1,105 +1,82 @@
 import { db } from './firebase-config.js';
-import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/9/firebase-firestore.js";
+import { doc, onSnapshot, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/9/firebase-firestore.js";
 
-// 현재 내가 어떤 방에 있는지, 내가 P1인지 P2인지 설정 (로그인 정보 등에 따라 가변적)
-const roomId = "battleroom1"; 
-const myRole = "player1"; // "player1" 또는 "player2"
-const opponentRole = myRole === "player1" ? "player2" : "player1";
+const roomId = "battleroom1";
+const myRole = "player1"; // 상황에 맞게 player2로 변경 가능
 
-/**
- * 1. 전투 시작: 유저의 entry를 배틀룸으로 복사해오기
- */
-async function startBattle(userId) {
-    const userRef = doc(db, "users", userId);
-    const userSnap = await getDoc(userRef);
-
-    if (userSnap.exists()) {
-        const userData = userSnap.data();
-        
-        // 핵심: users의 entry(array)를 그대로 가져와서 rooms에 복사함
-        await updateDoc(doc(db, "rooms", roomId), {
-            [`${myRole}_name`]: userData.name,
-            [`${myRole}_entry`]: userData.entry, // [ {name, hp}, ... ] 배열 통째로 복사
-            [`${myRole}_currentIdx`]: 0          // 0번 포켓몬을 선두로 설정
-        });
-        console.log("전투 준비 완료: 데이터 복사 성공");
-    }
-}
-
-/**
- * 2. 실시간 화면 업데이트 (onSnapshot)
- */
-function listenBattle() {
-    onSnapshot(doc(db, "rooms", roomId), (docSnap) => {
-        const data = docSnap.data();
-        if (!data) return;
-
-        // 플레이어 이름 표시
-        document.getElementById("p1-name").innerText = data.player1_name || "P1";
-        document.getElementById("p2-name").innerText = data.player2_name || "P2";
-
-        // 내 정보 업데이트 (UI 반영)
-        renderPokeInfo(data, "player1", "p1");
-        renderPokeInfo(data, "player2", "p2");
-    });
-}
-
-// UI를 그리는 공통 함수
-function renderPokeInfo(data, role, prefix) {
-    const entry = data[`${role}_entry`];
-    const currentIdx = data[`${role}_currentIdx`] || 0;
-    
-    if (entry && entry[currentIdx]) {
-        const mainPoke = entry[currentIdx];
-        const container = document.getElementById(`${prefix}-main-poke`);
-        container.querySelector(".poke-name").innerText = mainPoke.name;
-        container.querySelector(".hp-val").innerText = mainPoke.hp;
-
-        // 내 포켓몬일 경우에만 대기석 버튼 업데이트
-        if (role === myRole) {
-            entry.forEach((poke, idx) => {
-                if (idx !== currentIdx) {
-                    // 메인이 아닌 포켓몬을 버튼에 표시
-                    const btnIdx = idx === 0 ? 0 : idx; // 단순화를 위해 버튼 ID 매칭
-                    const btn = document.getElementById(`btn-poke-${idx}`);
-                    if (btn) btn.innerText = `${poke.name} (HP: ${poke.hp})`;
-                }
-            });
-        }
-    }
-}
-
-/**
- * 3. 포켓몬 교체 기능 (버튼 클릭 시)
- */
-window.switchPokemon = async function(newIdx) {
-    await updateDoc(doc(db, "rooms", roomId), {
-        [`${myRole}_currentIdx`]: newIdx
-    });
-    console.log(`${newIdx}번 포켓몬으로 교체되었습니다!`);
-};
-
-/**
- * 4. 공격 기능 (예시: 상대 HP 15 감소)
- */
-window.attack = async function() {
+// 1. 실시간 데이터 불러오기 (핵심)
+function initBattleWatcher() {
     const roomRef = doc(db, "rooms", roomId);
-    const snap = await getDoc(roomRef);
-    const data = snap.data();
 
-    let oppEntry = [...data[`${opponentRole}_entry`]];
-    let oppIdx = data[`${opponentRole}_currentIdx`] || 0;
+    // onSnapshot은 데이터가 바뀔 때마다 실행됨
+    onSnapshot(roomRef, (snapshot) => {
+        if (!snapshot.exists()) {
+            console.log("배틀룸 데이터를 찾을 수 없어!");
+            return;
+        }
 
-    // 현재 나와있는 상대 포켓몬 HP 깎기
-    oppEntry[oppIdx].hp = Math.max(0, oppEntry[oppIdx].hp - 15);
+        const data = snapshot.data();
+        console.log("불러온 데이터:", data); // 여기서 콘솔 확인 필수!
 
-    // rooms 데이터만 업데이트 (원본 users는 건드리지 않음)
-    await updateDoc(roomRef, {
-        [`${opponentRole}_entry`]: oppEntry
+        // player1_entry 배열이 있는지 확인
+        const entry = data[`${myRole}_entry`];
+        const currentIdx = data[`${myRole}_currentIdx`] ?? 0;
+
+        if (entry && Array.isArray(entry)) {
+            renderScreen(data, entry, currentIdx);
+        } else {
+            console.log("Entry 배열을 아직 불러오지 못했어.");
+        }
     });
-};
+}
 
-// 페이지 로드 시 리스너 실행
-listenBattle();
-// 실제로는 로그인한 유저 ID를 넣어야 함 (테스트용)
-// startBattle("user_123"); 
+// 2. 화면에 그려주는 함수 (구분해서 표시)
+function renderScreen(data, entry, currentIdx) {
+    // A. 선두 포켓몬 (중앙)
+    const activePoke = entry[currentIdx];
+    const mainDiv = document.getElementById("p1-main-pokemon");
+    mainDiv.innerHTML = `
+        <h3>${activePoke.name}</h3>
+        <p>HP: ${activePoke.hp}</p>
+        <progress value="${activePoke.hp}" max="100"></progress>
+    `;
+
+    // B. 나머지 포켓몬 (구석/버튼)
+    const benchDiv = document.getElementById("sub-entries");
+    benchDiv.innerHTML = ""; // 기존 내용 삭제
+
+    entry.forEach((poke, index) => {
+        // 현재 선두가 아닌 녀석들만 버튼으로 만듦
+        if (index !== currentIdx) {
+            const btn = document.createElement("button");
+            btn.className = "bench-btn";
+            btn.innerHTML = `
+                <div>${poke.name}</div>
+                <div style="font-size: 10px;">HP: ${poke.hp}</div>
+            `;
+            // 클릭 시 교체 함수 실행
+            btn.onclick = () => switchPokemon(index);
+            benchDiv.appendChild(btn);
+        }
+    });
+
+    // C. 플레이어 이름 표시
+    document.getElementById("player1_name").innerText = data.player1_name || "준비중";
+    document.getElementById("player2_name").innerText = data.player2_name || "준비중";
+}
+
+// 3. 포켓몬 교체 함수
+async function switchPokemon(newIdx) {
+    try {
+        const roomRef = doc(db, "rooms", roomId);
+        await updateDoc(roomRef, {
+            [`${myRole}_currentIdx`]: newIdx
+        });
+        console.log(`${newIdx}번 포켓몬으로 교체 완료!`);
+    } catch (e) {
+        console.error("교체 실패:", e);
+    }
+}
+
+// 실행
+initBattleWatcher();
