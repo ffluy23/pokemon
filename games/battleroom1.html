@@ -10,33 +10,38 @@
 <h1>배틀룸 1 테스트</h1>
 
 <div id="gameArea">
-<div id="battle-ui">
-    <div class="opponent-side">
-        <h2 id="p2-name">Player 2</h2>
-        <div class="active-pokemon">
-            <span id="p2-active-name">---</span>
-            <span id="p2-active-hp">0/0</span>
+<div id="battle-scene">
+    <div id="opponent-area" class="side">
+        <h3 id="p2-name">Player 2 대기 중...</h3>
+        <div id="p2-active-wrap">
+            <span id="p2-active-name">-</span> 
+            <progress id="p2-hp-bar" value="0" max="100"></progress>
+            <span id="p2-hp-text">0/0</span>
         </div>
+        <div id="p2-bench" class="bench-small"></div>
     </div>
 
     <hr>
 
-    <div class="player-side">
-        <h2 id="p1-name">Player 1</h2>
-        <div class="active-pokemon">
-            <strong id="p1-active-name">---</strong>
-            <span id="p1-active-hp">0/0</span>
+    <div id="player-area" class="side">
+        <h3 id="p1-name">Player 1 대기 중...</h3>
+        <div id="p1-active-wrap">
+            <strong id="p1-active-name">-</strong> 
+            <progress id="p1-hp-bar" value="0" max="100"></progress>
+            <span id="p1-hp-text">0/0</span>
+        </div>
+        
+        <div id="p1-bench">
+            <span>교체: </span>
+            <button id="btn-sub-0" class="sub-btn"></button>
+            <button id="btn-sub-1" class="sub-btn"></button>
         </div>
 
-        <div id="bench-ui">
-            <p>교체하기:</p>
-            <button id="bench-btn-0" style="display:none;"></button>
-            <button id="bench-btn-1" style="display:none;"></button>
-            <button id="bench-btn-2" style="display:none;"></button>
+        <div class="controls">
+            <button id="attackBtn">공격!</button>
         </div>
-
-        <button id="attackBtn">공격하기</button>
     </div>
+</div>
 </div>
 
 
