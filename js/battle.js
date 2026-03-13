@@ -1,55 +1,79 @@
-import { db } from "./firebase.js";
+import { db, auth } from "./firebase.js";
 import { 
-    doc, 
-    onSnapshot 
+    doc, onSnapshot, getDoc, updateDoc 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-/**
- * HTML에서 호출하는 메인 함수
- * @param {string} roomId - "battleroom1"과 같은 방 아이디
- */
 export function loadBattle(roomId) {
-    // 1. 해당 방의 참조(Reference) 생성
     const roomRef = doc(db, "rooms", roomId);
 
-    console.log(`${roomId} 데이터를 불러오는 중...`);
+    onAuthStateChanged(auth, async (user) => {
+        if (!user) return;
 
-    // 2. 실시간 데이터 감시 (onSnapshot)
-    // 데이터가 변경될 때마다 이 내부 코드가 자동으로 실행됨
-    onSnapshot(roomRef, (snap) => {
-        if (!snap.exists()) {
-            console.error("방 정보를 찾을 수 없습니다.");
-            return;
+        // [최초 1회] 유저 데이터 복사해오기
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        const userData = userDoc.data();
+        const myPokemon = userData.entry[0]; // 0번 포켓몬
+
+        const roomSnap = await getDoc(roomRef);
+        const roomData = roomSnap.data();
+        const mySlot = roomData.player1_uid === user.uid ? "player1" : "player2";
+
+        // 방에 내 HP 정보가 아직 없으면(최초 진입) 복사 실행
+        if (roomData[`${mySlot}_hp`] === undefined || roomData[`${mySlot}_hp`] === 0) {
+            await updateDoc(roomRef, {
+                [`${mySlot}_name`]: myPokemon.name,
+                [`${mySlot}_hp`]: myPokemon.hp,      // 현재 체력으로 쓸 복사본
+                [`${mySlot}_maxHp`]: myPokemon.hp   // 최대 체력 제한용
+            });
         }
 
-        const room = snap.data();
-
-        // --- 플레이어 1 정보 업데이트 ---
-        const p1NameDisplay = document.getElementById("player1_name");
-        const p1HpDisplay = document.getElementById("player1_hp");
-
-        if (p1NameDisplay) {
-            // 이름이 없으면 "대기 중..." 표시
-            p1NameDisplay.innerText = room.player1_name || "대기 중...";
-        }
-        if (p1HpDisplay) {
-            // HP가 undefined거나 null이면 0으로 표시
-            p1HpDisplay.innerText = room.player1_hp ?? 0;
-        }
-
-        // --- 플레이어 2 정보 업데이트 ---
-        const p2NameDisplay = document.getElementById("player2_name");
-        const p2HpDisplay = document.getElementById("player2_hp");
-
-        if (p2NameDisplay) {
-            p2NameDisplay.innerText = room.player2_name || "대기 중...";
-        }
-        if (p2HpDisplay) {
-            p2HpDisplay.innerText = room.player2_hp ?? 0;
-        }
-
-        console.log("데이터 업데이트 완료:", room);
-    }, (error) => {
-        console.error("실시간 감시 중 오류 발생:", error);
+        setupControls(mySlot, roomRef);
     });
+
+    // 실시간 화면 업데이트
+    onSnapshot(roomRef, (snap) => {
+        const room = snap.data();
+        if (!room) return;
+
+        // 플레이어 1 UI
+        document.getElementById("player1_name").innerText = room.player1_name || "대기...";
+        document.getElementById("player1_hp").innerText = room.player1_hp ?? 0;
+        document.getElementById("p1-max-hp").innerText = room.player1_maxHp ?? 0;
+
+        // 플레이어 2 UI
+        document.getElementById("player2_name").innerText = room.player2_name || "대기...";
+        document.getElementById("player2_hp").innerText = room.player2_hp ?? 0;
+        document.getElementById("p2-max-hp").innerText = room.player2_maxHp ?? 0;
+    });
+}
+
+function setupControls(mySlot, roomRef) {
+    const enemySlot = mySlot === "player1" ? "player2" : "player1";
+
+    // 공격 버튼: 상대방 HP를 깎음
+    document.getElementById("attackBtn").onclick = async () => {
+        const snap = await getDoc(roomRef);
+        const data = snap.data();
+        const enemyHp = data[`${enemySlot}_hp`] ?? 0;
+
+        await updateDoc(roomRef, {
+            [`${enemySlot}_hp`]: Math.max(0, enemyHp - 40)
+        });
+    };
+
+    // 치유 버튼: 내 HP를 채움 (최대 체력까지만)
+    document.getElementById("healBtn").onclick = async () => {
+        const snap = await getDoc(roomRef);
+        const data = snap.data();
+        const myHp = data[`${mySlot}_hp`] ?? 0;
+        const myMaxHp = data[`${mySlot}_maxHp`] ?? 0;
+
+        // 회복 후 체력이 maxHp를 넘지 않게 계산
+        const healedHp = Math.min(myMaxHp, myHp + 20);
+
+        await updateDoc(roomRef, {
+            [`${mySlot}_hp`]: healedHp
+        });
+    };
 }
