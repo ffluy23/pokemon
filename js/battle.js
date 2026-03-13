@@ -1,5 +1,5 @@
 // battle.js
-// PvP battle engine (rules fully applied)
+// PvP battle engine
 
 import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 import { db } from "./firebase.js"
@@ -7,11 +7,8 @@ import { moves } from "./moves.js"
 import { getTypeMultiplier } from "./typeChart.js"
 
 let roomId
-let roomData
-
 let player
 let enemy
-
 let playerKey
 let enemyKey
 
@@ -21,11 +18,7 @@ function rollDice(){
 }
 
 
-function calcHP(defense){
-    return 120 + defense * 15
-}
-
-
+// 선공 판정
 function checkFirstTurn(p1,p2){
 
     const r1 = p1.speed + rollDice()
@@ -40,6 +33,7 @@ function checkFirstTurn(p1,p2){
 }
 
 
+// 명중 판정
 function checkHit(attacker,defender){
 
     const roll = attacker.speed + rollDice()
@@ -50,6 +44,7 @@ function checkHit(attacker,defender){
 }
 
 
+// 자속 보정
 function getSTAB(attacker,move){
 
     if(attacker.type.includes(move.type)){
@@ -61,6 +56,7 @@ function getSTAB(attacker,move){
 }
 
 
+// 데미지 계산
 function calcDamage(attacker,defender,move){
 
     const dice = rollDice()
@@ -84,11 +80,15 @@ function calcDamage(attacker,defender,move){
 }
 
 
+// 공격 실행
 function executeAttack(attacker,defender,moveName){
 
     const move = moves[moveName]
 
+    if(!move) return
+
     if(!checkHit(attacker,defender)){
+        console.log("miss")
         return
     }
 
@@ -103,24 +103,33 @@ function executeAttack(attacker,defender,moveName){
 }
 
 
+// 기술 버튼 UI
 function renderPlayerUI(){
 
-    document.getElementById("player_name").innerText = player.nickname
+    if(!player){
+        console.log("player data 없음")
+        return
+    }
+
+    document.getElementById("player_name").innerText = player.nickname || "player"
     document.getElementById("pokemon_name").innerText = player.name
     document.getElementById("pokemon_type").innerText = player.type.join(",")
 
     const buttons = document.querySelectorAll(".moveBtn")
 
-    player.moves.forEach((moveName,index)=>{
+    buttons.forEach((btn,index)=>{
 
-        const btn = buttons[index]
+        const moveName = player.moves[index]
+
+        if(!moveName){
+            btn.innerText = "-"
+            return
+        }
 
         btn.innerText = moveName
 
-        btn.onclick = () => {
-
+        btn.onclick = ()=>{
             chooseMove(moveName)
-
         }
 
     })
@@ -128,6 +137,7 @@ function renderPlayerUI(){
 }
 
 
+// 기술 선택
 async function chooseMove(moveName){
 
     const ref = doc(db,"rooms",roomId)
@@ -141,6 +151,7 @@ async function chooseMove(moveName){
 }
 
 
+// 턴 처리
 async function processTurn(){
 
     const ref = doc(db,"rooms",roomId)
@@ -148,6 +159,8 @@ async function processTurn(){
     const snap = await getDoc(ref)
 
     const data = snap.data()
+
+    if(!data) return
 
     const p1Move = data.player1_move
     const p2Move = data.player2_move
@@ -159,6 +172,10 @@ async function processTurn(){
     let p1 = data.player1_entry
     let p2 = data.player2_entry
 
+    if(!p1 || !p2){
+        console.log("entry 없음")
+        return
+    }
 
     const first = checkFirstTurn(p1,p2)
 
@@ -183,15 +200,16 @@ async function processTurn(){
 
 
     await updateDoc(ref,{
-        player1_entry: p1,
-        player2_entry: p2,
-        player1_move: null,
-        player2_move: null
+        player1_entry:p1,
+        player2_entry:p2,
+        player1_move:null,
+        player2_move:null
     })
 
 }
 
 
+// 배틀 로드
 export async function loadBattle(id){
 
     roomId = id
@@ -200,10 +218,14 @@ export async function loadBattle(id){
 
     const snap = await getDoc(ref)
 
-    roomData = snap.data()
+    const roomData = snap.data()
+
+    if(!roomData){
+        console.log("room 없음")
+        return
+    }
 
     const uid = localStorage.getItem("uid")
-
 
     if(roomData.player1_uid === uid){
 
@@ -223,13 +245,12 @@ export async function loadBattle(id){
 
     }
 
-
-    player.hp = calcHP(player.defense)
-    enemy.hp = calcHP(enemy.defense)
-
+    if(!player){
+        console.log("player_entry 없음")
+        return
+    }
 
     renderPlayerUI()
-
 
     setInterval(processTurn,1000)
 
