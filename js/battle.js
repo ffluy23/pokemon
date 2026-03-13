@@ -1,14 +1,19 @@
-// battle.js
-// PvP battle engine
-
 import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 import { db } from "./firebase.js"
 import { moves } from "./moves.js"
 import { getTypeMultiplier } from "./typeChart.js"
 
 let roomId
-let player
-let enemy
+
+let playerData
+let enemyData
+
+let playerPokemon
+let enemyPokemon
+
+let playerField
+let enemyField
+
 let playerKey
 let enemyKey
 
@@ -18,22 +23,16 @@ function rollDice(){
 }
 
 
-// 선공 판정
 function checkFirstTurn(p1,p2){
 
     const r1 = p1.speed + rollDice()
     const r2 = p2.speed + rollDice()
 
-    if(r1 > r2){
-        return "p1"
-    }else{
-        return "p2"
-    }
+    return r1 > r2 ? "p1" : "p2"
 
 }
 
 
-// 명중 판정
 function checkHit(attacker,defender){
 
     const roll = attacker.speed + rollDice()
@@ -44,19 +43,13 @@ function checkHit(attacker,defender){
 }
 
 
-// 자속 보정
 function getSTAB(attacker,move){
 
-    if(attacker.type.includes(move.type)){
-        return 1.3
-    }
-
-    return 1
+    return attacker.type.includes(move.type) ? 1.3 : 1
 
 }
 
 
-// 데미지 계산
 function calcDamage(attacker,defender,move){
 
     const dice = rollDice()
@@ -71,55 +64,41 @@ function calcDamage(attacker,defender,move){
 
     damage = Math.floor(damage)
 
-    if(damage < 0){
-        damage = 0
-    }
+    if(damage < 0) damage = 0
 
     return damage
 
 }
 
 
-// 공격 실행
 function executeAttack(attacker,defender,moveName){
 
     const move = moves[moveName]
 
     if(!move) return
 
-    if(!checkHit(attacker,defender)){
-        console.log("miss")
-        return
-    }
+    if(!checkHit(attacker,defender)) return
 
     const damage = calcDamage(attacker,defender,move)
 
     defender.hp -= damage
 
-    if(defender.hp < 0){
-        defender.hp = 0
-    }
+    if(defender.hp < 0) defender.hp = 0
 
 }
 
 
-// 기술 버튼 UI
 function renderPlayerUI(){
 
-    if(!player){
-        console.log("player data 없음")
-        return
-    }
-
-    document.getElementById("player_name").innerText = player.nickname || "player"
-    document.getElementById("pokemon_name").innerText = player.name
-    document.getElementById("pokemon_type").innerText = player.type.join(",")
+    document.getElementById("player_name").innerText = playerData.nickname
+    document.getElementById("pokemon_name").innerText = playerPokemon.name
+    document.getElementById("pokemon_type").innerText = playerPokemon.type.join(",")
 
     const buttons = document.querySelectorAll(".moveBtn")
 
     buttons.forEach((btn,index)=>{
 
-        const moveName = player.moves[index]
+        const moveName = playerPokemon.moves[index]
 
         if(!moveName){
             btn.innerText = "-"
@@ -137,7 +116,6 @@ function renderPlayerUI(){
 }
 
 
-// 기술 선택
 async function chooseMove(moveName){
 
     const ref = doc(db,"rooms",roomId)
@@ -151,57 +129,54 @@ async function chooseMove(moveName){
 }
 
 
-// 턴 처리
 async function processTurn(){
 
-    const ref = doc(db,"rooms",roomId)
+    const roomRef = doc(db,"rooms",roomId)
+    const roomSnap = await getDoc(roomRef)
 
-    const snap = await getDoc(ref)
+    const room = roomSnap.data()
 
-    const data = snap.data()
+    if(!room.player1_move || !room.player2_move) return
 
-    if(!data) return
 
-    const p1Move = data.player1_move
-    const p2Move = data.player2_move
+    const p1Ref = doc(db,"users",room.player1_uid)
+    const p2Ref = doc(db,"users",room.player2_uid)
 
-    if(!p1Move || !p2Move){
-        return
-    }
+    const p1Snap = await getDoc(p1Ref)
+    const p2Snap = await getDoc(p2Ref)
 
-    let p1 = data.player1_entry
-    let p2 = data.player2_entry
+    const p1Data = p1Snap.data()
+    const p2Data = p2Snap.data()
 
-    if(!p1 || !p2){
-        console.log("entry 없음")
-        return
-    }
+    const p1 = p1Data.entry[room.player1_field]
+    const p2 = p2Data.entry[room.player2_field]
+
 
     const first = checkFirstTurn(p1,p2)
 
-
     if(first === "p1"){
 
-        executeAttack(p1,p2,p1Move)
+        executeAttack(p1,p2,room.player1_move)
 
         if(p2.hp > 0){
-            executeAttack(p2,p1,p2Move)
+            executeAttack(p2,p1,room.player2_move)
         }
 
     }else{
 
-        executeAttack(p2,p1,p2Move)
+        executeAttack(p2,p1,room.player2_move)
 
         if(p1.hp > 0){
-            executeAttack(p1,p2,p1Move)
+            executeAttack(p1,p2,room.player1_move)
         }
 
     }
 
 
-    await updateDoc(ref,{
-        player1_entry:p1,
-        player2_entry:p2,
+    await updateDoc(p1Ref,{ entry:p1Data.entry })
+    await updateDoc(p2Ref,{ entry:p2Data.entry })
+
+    await updateDoc(roomRef,{
         player1_move:null,
         player2_move:null
     })
@@ -209,46 +184,55 @@ async function processTurn(){
 }
 
 
-// 배틀 로드
 export async function loadBattle(id){
 
     roomId = id
 
-    const ref = doc(db,"rooms",roomId)
+    const roomRef = doc(db,"rooms",roomId)
+    const roomSnap = await getDoc(roomRef)
 
-    const snap = await getDoc(ref)
-
-    const roomData = snap.data()
-
-    if(!roomData){
-        console.log("room 없음")
-        return
-    }
+    const room = roomSnap.data()
 
     const uid = localStorage.getItem("uid")
 
-    if(roomData.player1_uid === uid){
+    const p1Ref = doc(db,"users",room.player1_uid)
+    const p2Ref = doc(db,"users",room.player2_uid)
 
-        player = roomData.player1_entry
-        enemy = roomData.player2_entry
+    const p1Snap = await getDoc(p1Ref)
+    const p2Snap = await getDoc(p2Ref)
+
+    const p1 = p1Snap.data()
+    const p2 = p2Snap.data()
+
+
+    if(uid === room.player1_uid){
+
+        playerData = p1
+        enemyData = p2
+
+        playerField = room.player1_field
+        enemyField = room.player2_field
 
         playerKey = "player1"
         enemyKey = "player2"
 
     }else{
 
-        player = roomData.player2_entry
-        enemy = roomData.player1_entry
+        playerData = p2
+        enemyData = p1
+
+        playerField = room.player2_field
+        enemyField = room.player1_field
 
         playerKey = "player2"
         enemyKey = "player1"
 
     }
 
-    if(!player){
-        console.log("player_entry 없음")
-        return
-    }
+
+    playerPokemon = playerData.entry[playerField]
+    enemyPokemon = enemyData.entry[enemyField]
+
 
     renderPlayerUI()
 
