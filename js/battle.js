@@ -21,9 +21,8 @@ function listenRoom() {
 onSnapshot(roomRef, (snap) => {
 const data = snap.data()
 if (!data) return
-if (!data.p1_entry || !data.p2_entry) return
-
-```
+if (!data.p1_entry || !data.p2_entry) retur
+  
 const enemySlot = mySlot === "p1" ? "p2" : "p1"
 
 document.getElementById("p1-name").innerText = data.player1_name ?? "대기..."
@@ -31,8 +30,7 @@ document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
 
 updateActiveUI(mySlot, data, "my")
 updateActiveUI(enemySlot, data, "enemy")
-updateBenchButtons(data)
-```
+updateBenchButtons(data
 
 })
 }
@@ -57,7 +55,6 @@ const activeIdx = data[`${mySlot}_active_idx`]
 myEntry.forEach((pkmn, idx) => {
 if (idx === activeIdx) return
 
-```
 const btn = document.createElement("button")
 
 if (pkmn.hp <= 0) {
@@ -69,7 +66,6 @@ if (pkmn.hp <= 0) {
 }
 
 benchContainer.appendChild(btn)
-```
 
 })
 }
