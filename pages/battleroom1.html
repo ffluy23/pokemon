@@ -2,64 +2,25 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Battle Room 1</title>
-<link rel="stylesheet" href="../css/style.css">
+<title>BattleRoom1</title>
 </head>
 
 <body>
 
-<h1>Battle Room 1</h1>
+<h2>Battle Room 1</h2>
 
-<div>
-Player1 : <span id="player1">waiting...</span>
-</div>
+<div id="player1">Player1: 대기...</div>
+<div id="player2">Player2: 대기...</div>
 
-<div>
-Player2 : <span id="player2">waiting...</span>
-</div>
+<button id="readyBtn">Ready</button>
+<button id="leaveBtn">Leave</button>
 
-<button id="startBtn" onclick="startGame('battleroom2')" disabled>
-Start Game
-</button>
-
-<button onclick="leaveRoom('battleroom2')">
-Leave
-</button>
-
-<script type="module">
-
-import { auth } from "../js/firebase.js"
-
-import {
-onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
-
-import {
-joinRoom,
-listenRoom,
-startGame,
-leaveRoom
-} from "../js/battleroom.js"
-
-window.startGame = startGame
-window.leaveRoom = leaveRoom
-
-onAuthStateChanged(auth, async (user)=>{
-
-if(!user){
-location.href="../index.html"
-return
-}
-
-// 먼저 방 입장
-await joinRoom("battleroom1")
-
-// 그 다음 실시간 감시
-listenRoom("battleroom1")
-
-})
-
+<script>
+const ROOM_ID = "battleroom1"
 </script>
+
+<script type="module" src="../js/firebase.js"></script>
+<script type="module" src="../js/battleroom.js"></script>
 
 </body>
 </html>
