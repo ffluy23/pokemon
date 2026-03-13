@@ -1,13 +1,20 @@
-import { moves } from "./moves.js"
-import { playerUseMove } from "./battle.js"
-
 export function renderMoves(moveList){
 
   const buttons = document.querySelectorAll(".moveBtn")
 
-  moveList.forEach((moveName,index)=>{
+  if(!moveList){
+    console.log("moveList 없음")
+    return
+  }
 
-    const btn = buttons[index]
+  buttons.forEach((btn,index)=>{
+
+    const moveName = moveList[index]
+
+    if(!moveName){
+      btn.innerText = "-"
+      return
+    }
 
     btn.innerText = moveName
 
