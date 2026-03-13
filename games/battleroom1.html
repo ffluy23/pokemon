@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Game</title>
+<title>Battle room 1</title>
 </head>
 
 <body>
@@ -13,20 +13,20 @@
 
 <h2>Player1</h2>
 <div id="p1_name"></div>
-<div id="p1_entry"></div>
 
 <h2>Player2</h2>
 <div id="p2_name"></div>
-<div id="p2_entry"></div>
+
+<h2>현재 턴</h2>
+<div id="turn_display"></div>
+
+<button id="attackBtn" style="display:none;">공격</button>
 
 </div>
 
 <script type="module">
-
 import { loadBattle } from "../js/battle.js"
-
 loadBattle("battleroom1")
-
 </script>
 
 </body>
