@@ -20,9 +20,17 @@ loginBtn.onclick = async () => {
 const email = document.getElementById("email").value
 const password = document.getElementById("password").value
 
+try{
+
 await signInWithEmailAndPassword(auth,email,password)
 
 location.href="main.html"
+
+}catch(error){
+
+alert("아이디 또는 비밀번호를 확인해줘!")
+
+}
 
 }
 
