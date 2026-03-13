@@ -1,53 +1,99 @@
-import { db, auth } from "./firebase.js";
-import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { auth, db } from "./firebase.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-const ROOM_ID = "battleroom1"; // 실제로는 동적으로 받겠지?
+// 현재 페이지 URL에서 ROOM_ID 추출 (예: battleroom1.html -> battleroom1)
+const ROOM_ID = window.location.pathname.split('/').pop().replace('.html', '');
 const roomRef = doc(db, "rooms", ROOM_ID);
+
+let myUid = null;
+let mySlot = null; // "p1" 또는 "p2"
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) return;
+    myUid = user.uid;
 
-    // 1. 방 정보와 유저의 원본 엔트리 가져오기
     const roomSnap = await getDoc(roomRef);
-    const userDoc = await getDoc(doc(db, "users", user.uid));
-    
-    if (!roomSnap.exists() || !userDoc.exists()) return;
-
     const roomData = roomSnap.data();
-    const myEntry = userDoc.data().entry; // 유저의 [ {name, hp}, ... ] 배열
 
-    // 2. 내가 P1인지 P2인지 판별해서 데이터 복사
-    // 방의 player1_uid가 내 UID와 같다면 p1_entry로, 아니면 p2_entry로 복사
-    if (roomData.player1_uid === user.uid) {
-        // [중요] 이미 복사되어 있다면 다시 복사하지 않음 (무한 업데이트 방지)
-        if (!roomData.p1_entry) {
-            await updateDoc(roomRef, {
-                p1_entry: myEntry,
-                p1_active_idx: 0
-            });
-            console.log("P1 엔트리 복사 완료");
-        }
-    } else if (roomData.player2_uid === user.uid) {
-        if (!roomData.p2_entry) {
-            await updateDoc(roomRef, {
-                p2_entry: myEntry,
-                p2_active_idx: 0
-            });
-            console.log("P2 엔트리 복사 완료");
-        }
+    // 1. 대기실 로직에서 정해진 UID로 내 슬롯(p1/p2) 결정
+    if (roomData.player1_uid === myUid) mySlot = "p1";
+    else if (roomData.player2_uid === myUid) mySlot = "p2";
+
+    if (!mySlot) return;
+
+    // 2. [최초 1회] 내 entry 복사 (필드가 없을 때만)
+    if (!roomData[`${mySlot}_entry`]) {
+        const userDoc = await getDoc(doc(db, "users", myUid));
+        await updateDoc(roomRef, {
+            [`${mySlot}_entry`]: userDoc.data().entry, // [ {name, hp}, ... ] 배열 복사
+            [`${mySlot}_active_idx`]: 0
+        });
     }
+
+    startBattleListener();
+    setupControls();
 });
 
-// 3. 실시간 감시 (복사가 잘 됐는지 콘솔로 확인)
-onSnapshot(roomRef, (snap) => {
-    const data = snap.data();
-    if (!data) return;
+// 3. 실시간 화면 업데이트
+function startBattleListener() {
+    onSnapshot(roomRef, (snap) => {
+        const data = snap.data();
+        if (!data) return;
 
-    console.log("현재 방 데이터 상황:", data);
+        // P1, P2 데이터가 있을 때 각각 화면 갱신
+        if (data.p1_entry) updateUI("p1", data);
+        if (data.p2_entry) updateUI("p2", data);
+    });
+}
 
-    if (data.p1_entry && data.p2_entry) {
-        console.log("양쪽 플레이어 엔트리 로드 완료! 이제 전투 가능");
-        // 여기서부터 화면에 뿌려주는 코드를 작성하면 돼
+function updateUI(slot, data) {
+    const entry = data[`${slot}_entry`];
+    const activeIdx = data[`${slot}_active_idx`] || 0;
+    const activePkmn = entry[activeIdx];
+
+    // 이름 및 활성 포켓몬 정보
+    document.getElementById(`${slot}-name-display`).innerText = data[`player${slot === "p1" ? 1 : 2}_name`];
+    document.getElementById(`${slot}-active-name`).innerText = activePkmn.name;
+    document.getElementById(`${slot}-active-hp`).innerText = activePkmn.hp;
+
+    // 대기 포켓몬 표시
+    if (slot === mySlot) {
+        // 내꺼면 교체 버튼 생성
+        const btnContainer = document.getElementById(`${slot}-bench-btns`);
+        btnContainer.innerHTML = ""; 
+        entry.forEach((pkmn, idx) => {
+            if (idx !== activeIdx) {
+                const btn = document.createElement("button");
+                btn.innerText = `${pkmn.name}(${pkmn.hp})`;
+                btn.onclick = () => switchPokemon(idx);
+                btnContainer.appendChild(btn);
+            }
+        });
+    } else {
+        // 상대꺼면 구석에 이름만 표시
+        const benchText = entry.filter((_, i) => i !== activeIdx).map(p => p.name).join(", ");
+        document.getElementById(`${slot}-bench`).innerText = "대기: " + (benchText || "없음");
     }
-});
+}
+
+// 4. 교체 및 공격 기능
+async function switchPokemon(newIdx) {
+    await updateDoc(roomRef, { [`${mySlot}_active_idx`]: newIdx });
+}
+
+function setupControls() {
+    document.getElementById("attackBtn").onclick = async () => {
+        const snap = await getDoc(roomRef);
+        const data = snap.data();
+        const enemySlot = mySlot === "p1" ? "p2" : "p1";
+        
+        if (!data[`${enemySlot}_entry`]) return;
+
+        const enemyEntry = [...data[`${enemySlot}_entry`]];
+        const enemyIdx = data[`${enemySlot}_active_idx`];
+        enemyEntry[enemyIdx].hp = Math.max(0, enemyEntry[enemyIdx].hp - 20);
+
+        await updateDoc(roomRef, { [`${enemySlot}_entry`]: enemyEntry });
+    };
+}
