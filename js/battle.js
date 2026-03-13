@@ -19,60 +19,30 @@ export function loadBattle(roomId) {
     if (!user) return;
     myUid = user.uid;
 
-    // 내 슬롯 확인
     const roomSnap = await getDoc(roomRef);
     const roomData = roomSnap.data();
+
     mySlot = roomData.player1_uid === myUid ? "p1" : "p2";
 
-    // 버튼 세팅
-    setupControls();
+    // ── player1만 entry 복사 담당 (race condition 방지) ──
+    if (mySlot === "p1" && !roomData.p1_entry) {
+      await copyEntriesToRoom(roomData);
+    }
 
-    // 실시간 리스닝 시작
+    setupControls();
     listenRoom();
   });
 }
 
-function listenRoom() {
-  if (unsubscribe) unsubscribe(); // 중복 방지
-
-  unsubscribe = onSnapshot(roomRef, async (snap) => {
-    const data = snap.data();
-    if (!data) return;
-
-    // ── 핵심 트리거: 둘 다 ready이고 아직 entry가 복사 안 된 경우 ──
-    const bothReady = data.player1_ready && data.player2_ready;
-    const entriesNotCopied = !data.p1_entry || !data.p2_entry;
-
-    if (bothReady && entriesNotCopied) {
-      await copyEntriesToRoom(data);
-      return; // 복사 후 onSnapshot이 다시 트리거되므로 여기서 종료
-    }
-
-    // ── entry가 둘 다 존재할 때만 UI 업데이트 ──
-    if (!data.p1_entry || !data.p2_entry) return;
-
-    // 플레이어 이름 표시
-    document.getElementById("p1-name").innerText = data.player1_name ?? "대기...";
-    document.getElementById("p2-name").innerText = data.player2_name ?? "대기...";
-
-    // 포켓몬 UI 업데이트
-    updatePokemonUI("p1", data);
-    updatePokemonUI("p2", data);
-
-    // 내 대기 포켓몬 버튼 업데이트
-    updateBenchButtons(mySlot, data);
-  });
-}
-
-// ── 두 유저의 entry를 users 컬렉션에서 읽어 룸에 복사 ──
+// ── p1, p2 entry 둘 다 users에서 읽어서 룸 문서에 복사 ──
 async function copyEntriesToRoom(roomData) {
-  const [p1UserSnap, p2UserSnap] = await Promise.all([
+  const [p1Snap, p2Snap] = await Promise.all([
     getDoc(doc(db, "users", roomData.player1_uid)),
     getDoc(doc(db, "users", roomData.player2_uid)),
   ]);
 
-  const p1Entry = p1UserSnap.data()?.entry ?? [];
-  const p2Entry = p2UserSnap.data()?.entry ?? [];
+  const p1Entry = p1Snap.data()?.entry ?? [];
+  const p2Entry = p2Snap.data()?.entry ?? [];
 
   await updateDoc(roomRef, {
     p1_entry: p1Entry,
@@ -82,25 +52,41 @@ async function copyEntriesToRoom(roomData) {
   });
 }
 
-// ── 포켓몬 이름/HP 표시 ──
+function listenRoom() {
+  if (unsubscribe) unsubscribe();
+
+  unsubscribe = onSnapshot(roomRef, (snap) => {
+    const data = snap.data();
+    if (!data) return;
+
+    // entry 둘 다 복사될 때까지 대기
+    if (!data.p1_entry || !data.p2_entry) return;
+
+    document.getElementById("p1-name").innerText = data.player1_name ?? "대기...";
+    document.getElementById("p2-name").innerText = data.player2_name ?? "대기...";
+
+    updatePokemonUI("p1", data);
+    updatePokemonUI("p2", data);
+    updateBenchButtons(mySlot, data);
+  });
+}
+
 function updatePokemonUI(slot, data) {
   const activeIdx = data[`${slot}_active_idx`];
   const activePokemon = data[`${slot}_entry`][activeIdx];
   if (!activePokemon) return;
 
   document.getElementById(`${slot}-active-name`).innerText = activePokemon.name;
-  document.getElementById(`${slot}-active-hp`).innerText =
-    `${activePokemon.hp} / 100`;
+  document.getElementById(`${slot}-active-hp`).innerText = `${activePokemon.hp} / 100`;
 }
 
-// ── 대기 포켓몬 버튼 렌더링 ──
 function updateBenchButtons(mySlot, data) {
   const myEntry = data[`${mySlot}_entry`];
   const activeIdx = data[`${mySlot}_active_idx`];
 
   let btnCount = 0;
   myEntry.forEach((pkmn, idx) => {
-    if (idx === activeIdx) return; // 현재 싸우는 포켓몬 제외
+    if (idx === activeIdx) return;
 
     const btn = document.getElementById(`bench-btn-${btnCount}`);
     if (btn) {
@@ -112,14 +98,12 @@ function updateBenchButtons(mySlot, data) {
   });
 }
 
-// ── 포켓몬 교체 ──
 async function switchPokemon(newIdx) {
   await updateDoc(roomRef, {
     [`${mySlot}_active_idx`]: newIdx,
   });
 }
 
-// ── 공격 버튼 ──
 function setupControls() {
   const enemySlot = mySlot === "p1" ? "p2" : "p1";
 
