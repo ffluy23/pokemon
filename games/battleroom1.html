@@ -10,34 +10,26 @@
 <h1>배틀룸 1 테스트</h1>
 
 <div id="gameArea">
-    <div id="battle-ui">
-    <div class="side opponent">
-        <h2 id="p2-name">상대방 대기 중...</h2>
-        <div id="p2-main-poke" class="poke-card-main">
-            <p class="poke-name">---</p>
-            <p>HP: <span class="hp-val">0</span> / 100</p>
+    <div id="battle-container">
+    <div id="player2-area" class="side">
+        <h2 id="p2-name-display">Player 2</h2>
+        <div id="p2-main-poke" class="main-poke">
+            <span class="poke-name"></span> | <span class="poke-hp"></span>
         </div>
     </div>
 
     <hr>
 
-    <div class="side player">
-        <h2 id="p1-name">내 이름</h2>
-        <div id="p1-main-poke" class="poke-card-main">
-            <p class="poke-name">---</p>
-            <p>HP: <span class="hp-val">0</span> / 100</p>
+    <div id="player1-area" class="side">
+        <h2 id="p1-name-display">Player 1</h2>
+        <div id="p1-main-poke" class="main-poke">
+            <span class="poke-name"></span> | <span class="poke-hp"></span>
         </div>
 
-        <div id="p1-bench">
-            <button onclick="switchPokemon(1)" id="btn-poke-1">대기 1</button>
-            <button onclick="switchPokemon(2)" id="btn-poke-2">대기 2</button>
-        </div>
+        <div id="p1-bench" class="bench"></div>
+    </div>
+</div>
 
-        <div class="controls">
-            <button onclick="attack()">공격하기</button>
-        </div>
-    </div>
-    </div>
 
 </div>
 
