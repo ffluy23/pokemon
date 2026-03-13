@@ -53,7 +53,8 @@ function updateActiveUI(slot, data, prefix) {
   if (!pokemon) return
 
   document.getElementById(`${prefix}-active-name`).innerText = pokemon.name
-  document.getElementById(`${prefix}-active-hp`).innerText = `HP: ${pokemon.hp} / 100`
+  document.getElementById(`${prefix}-active-hp`).innerText =
+    `HP: ${pokemon.hp} / ${pokemon.maxHp}`
 }
 
 // 교체 버튼 렌더링 (동적 생성)
@@ -69,7 +70,7 @@ function updateBenchButtons(data) {
     if (pkmn.hp <= 0) return       // 기절한 포켓몬 제외
 
     const btn = document.createElement("button")
-    btn.innerText = `${pkmn.name} (HP: ${pkmn.hp})`
+    btn.innerText = `${pkmn.name} (HP: ${pkmn.hp} / ${pkmn.maxHp})`
     btn.onclick = () => switchPokemon(idx)
     benchContainer.appendChild(btn)
   })
