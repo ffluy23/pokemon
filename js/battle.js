@@ -2,102 +2,110 @@ import { db, auth } from "./firebase.js";
 import { doc, onSnapshot, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// 룸 ID는 URL에서 가져오거나 대기실 코드에서 넘겨받은 값을 써야 함
+// 룸 ID 설정 (예: battleroom1)
 const ROOM_ID = "battleroom1"; 
+const roomRef = doc(db, "rooms", ROOM_ID);
 
-export function loadBattle(roomId) {
-    const roomRef = doc(db, "rooms", roomId);
+let mySlot = null; // 'p1' 또는 'p2'
 
+export function initBattle() {
     onAuthStateChanged(auth, async (user) => {
         if (!user) return;
 
-        // 1. 내 정보와 방 정보 가져오기
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        const userData = userDoc.data();
         const roomSnap = await getDoc(roomRef);
         const roomData = roomSnap.data();
 
-        const mySlot = roomData.player1_uid === user.uid ? "p1" : "p2";
+        // 1. 내가 P1인지 P2인지 결정
+        if (roomData.player1_uid === user.uid) mySlot = "p1";
+        else if (roomData.player2_uid === user.uid) mySlot = "p2";
 
-        // 2. [최초 1회] 내 엔트리 전체를 룸에 복사 (중요!)
-        // 이미 복사되어 있는지 확인 (p1_entry나 p2_entry가 없을 때만 실행)
+        if (!mySlot) return; // 방 참여자가 아니면 중단
+
+        // 2. [최초 1회] 내 포켓몬 엔트리 복사
+        // 방에 내 엔트리가 아직 없으면 유저 정보에서 긁어옴
         if (!roomData[`${mySlot}_entry`]) {
+            const userDoc = await getDoc(doc(db, "users", user.uid));
             await updateDoc(roomRef, {
-                [`${mySlot}_entry`]: userData.entry, // Array(Map) 통째로 복사
-                [`${mySlot}_active_idx`]: 0          // 처음엔 0번 포켓몬이 선두
+                [`${mySlot}_entry`]: userDoc.data().entry, // [ {name, hp}, ... ]
+                [`${mySlot}_active_idx`]: 0
             });
         }
 
-        // 버튼 세팅 (이때 mySlot 정보를 넘겨줌)
-        setupControls(mySlot, roomRef);
+        startListening();
+        setupInputEvents();
     });
+}
 
-    // 3. 실시간 화면 업데이트 (onSnapshot)
+// 실시간 데이터 감시 및 화면 그리기
+function startListening() {
     onSnapshot(roomRef, (snap) => {
         const data = snap.data();
-        if (!data || !data.p1_entry || !data.p2_entry) return; // 두 명 다 복사될 때까지 대기
+        if (!data) return;
 
-        // 플레이어 이름 표시
-        document.getElementById("p1-name").innerText = data.player1_name;
-        document.getElementById("p2-name").innerText = data.player2_name;
-
-        // --- 포켓몬 정보 표시 로직 ---
-        updatePokemonUI("p1", data);
-        updatePokemonUI("p2", data);
-        
-        // 내 대기 포켓몬 버튼 업데이트 (내가 p1인지 p2인지에 따라)
-        const mySlot = auth.currentUser.uid === data.player1_uid ? "p1" : "p2";
-        updateBenchButtons(mySlot, data, roomRef);
-    });
-}
-
-// 화면에 포켓몬 이름과 HP를 그려주는 함수
-function updatePokemonUI(slot, data) {
-    const activeIdx = data[`${slot}_active_idx`];
-    const activePokemon = data[`${slot}_entry`][activeIdx];
-
-    document.getElementById(`${slot}-active-name`).innerText = activePokemon.name;
-    document.getElementById(`${slot}-active-hp`).innerText = `${activePokemon.hp} / 100`;
-}
-
-// 대기 중인 포켓몬들을 버튼으로 만드는 함수
-function updateBenchButtons(mySlot, data, roomRef) {
-    const myEntry = data[`${mySlot}_entry`];
-    const activeIdx = data[`${mySlot}_active_idx`];
-
-    let btnCount = 0;
-    myEntry.forEach((pkmn, idx) => {
-        // 현재 싸우고 있는 포켓몬은 제외하고 버튼 생성
-        if (idx !== activeIdx) {
-            const btn = document.getElementById(`bench-btn-${btnCount}`);
-            if (btn) {
-                btn.style.display = "inline-block";
-                btn.innerText = `${pkmn.name} (HP: ${pkmn.hp})`;
-                btn.onclick = () => switchPokemon(mySlot, idx, roomRef);
-            }
-            btnCount++;
+        // 양쪽 데이터가 다 차야 배틀 화면을 제대로 그림
+        if (data.p1_entry && data.p2_entry) {
+            renderPlayer(data, "p1");
+            renderPlayer(data, "p2");
         }
     });
 }
 
-// 교체 실행 함수
-async function switchPokemon(mySlot, newIdx, roomRef) {
+// 플레이어 정보 렌더링 (p1, p2 공용)
+function renderPlayer(data, slot) {
+    const entry = data[`${slot}_entry`];
+    const activeIdx = data[`${slot}_active_idx`];
+    const activePkmn = entry[activeIdx];
+
+    // 1. 선두 포켓몬 UI 업데이트
+    document.getElementById(`${slot}-name`).innerText = data[`player${slot === "p1" ? 1 : 2}_name`];
+    document.getElementById(`${slot}-active-name`).innerText = activePkmn.name;
+    document.getElementById(`${slot}-hp-bar`).value = activePkmn.hp;
+    document.getElementById(`${slot}-hp-text`).innerText = `${activePkmn.hp} / 100`;
+
+    // 2. 대기 포켓몬 표시 (교체 버튼 포함)
+    if (slot === mySlot) {
+        // 내 슬롯일 경우: 교체 버튼 활성화
+        let btnIdx = 0;
+        entry.forEach((pkmn, idx) => {
+            if (idx !== activeIdx) {
+                const btn = document.getElementById(`btn-sub-${btnIdx}`);
+                if (btn) {
+                    btn.style.display = "inline-block";
+                    btn.innerText = `${pkmn.name} (HP:${pkmn.hp})`;
+                    btn.onclick = () => switchPokemon(idx);
+                }
+                btnIdx++;
+            }
+        });
+    } else {
+        // 상대방 슬롯일 경우: 구석에 이름만 표시
+        const enemyBench = document.getElementById(`${slot}-bench`);
+        const benchNames = entry
+            .filter((_, idx) => idx !== activeIdx)
+            .map(p => `${p.name}(HP:${p.hp})`)
+            .join(" | ");
+        enemyBench.innerText = "대기: " + benchNames;
+    }
+}
+
+// 교체 로직
+async function switchPokemon(newIdx) {
     await updateDoc(roomRef, {
         [`${mySlot}_active_idx`]: newIdx
     });
 }
 
-function setupControls(mySlot, roomRef) {
-    const enemySlot = mySlot === "p1" ? "p2" : "p1";
-
+// 조작 버튼 세팅
+function setupInputEvents() {
     document.getElementById("attackBtn").onclick = async () => {
         const snap = await getDoc(roomRef);
         const data = snap.data();
         
-        const enemyEntry = [...data[`${enemySlot}_entry`]]; // 배열 복사
+        const enemySlot = mySlot === "p1" ? "p2" : "p1";
+        const enemyEntry = [...data[`${enemySlot}_entry`]];
         const enemyActiveIdx = data[`${enemySlot}_active_idx`];
 
-        // 상대방 현재 포켓몬 HP 감소
+        // 대미지 계산 (예: 20)
         enemyEntry[enemyActiveIdx].hp = Math.max(0, enemyEntry[enemyActiveIdx].hp - 20);
 
         await updateDoc(roomRef, {
@@ -105,3 +113,6 @@ function setupControls(mySlot, roomRef) {
         });
     };
 }
+
+// 실행
+initBattle();
