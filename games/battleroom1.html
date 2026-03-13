@@ -10,39 +10,20 @@
 <h1>엔트리 1 테스트</h1>
 
 <div id="gameArea">
-<div id="battle-container">
-    <div class="side opponent">
-        <h2 id="p2-name-title">상대방</h2>
-        <div class="active-box">
-            <span id="p2-active-name">-</span>
-            <progress id="p2-hp-bar" value="0" max="100"></progress>
-            <span id="p2-hp-text">0/0</span>
-        </div>
-        <div id="p2-bench" style="font-size: 0.8rem; color: gray;"></div>
-    </div>
+<h2 id="player1_name"></h2>
+<div id="player1_active_name"></div>
+<div id="player1_hp"></div>
+<div id="p1-bench"></div>
 
-    <hr>
+<hr>
 
-    <div class="side player">
-        <h2 id="p1-name-title">나</h2>
-        <div class="active-box">
-            <strong id="p1-active-name">-</strong>
-            <progress id="p1-hp-bar" value="0" max="100"></progress>
-            <span id="p1-hp-text">0/0</span>
-        </div>
+<h2 id="player2_name"></h2>
+<div id="player2_active_name"></div>
+<div id="player2_hp"></div>
+<div id="p2-bench"></div>
 
-        <div id="p1-bench-container" style="margin: 10px 0;">
-            <p style="font-size: 0.8rem;">교체하기:</p>
-            <div id="p1-bench-btns"></div>
-        </div>
-
-        <div class="actions">
-            <button onclick="attack()">공격하기</button>
-        </div>
-    </div>
-</div>
-
-
+<button id="attackBtn">공격</button>
+    
 </div>
 
 
