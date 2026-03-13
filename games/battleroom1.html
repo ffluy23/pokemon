@@ -10,17 +10,37 @@
 <h1>배틀룸 1 테스트</h1>
 
 <div id="gameArea">
-    <h2 id="player1_name"></h2>
-    <div>HP: <span id="player1_hp"></span> / <span id="p1-max-hp"></span></div>
-
-    <h2 id="player2_name"></h2>
-    <div>HP: <span id="player2_hp"></span> / <span id="p2-max-hp"></span></div>
+    <div id="battle-screen">
+    <div class="opponent-side">
+        <h2 id="player2-name">Player 2</h2>
+        <div id="p2-main-pokemon" class="main-pokemon">
+            <span class="name">---</span>
+            <progress id="p2-hp-bar" value="100" max="100"></progress>
+            <span id="p2-hp-text">0/0</span>
+        </div>
+    </div>
 
     <hr>
-    <div id="controls">
-        <button id="attackBtn">공격 (40 데미지)</button>
-        <button id="healBtn">치유 (20 회복)</button>
+
+    <div class="player-side">
+        <div id="p1-main-pokemon" class="main-pokemon">
+            <h2 id="player1-name">Player 1</h2>
+            <span class="name">---</span>
+            <progress id="p1-hp-bar" value="100" max="100"></progress>
+            <span id="p1-hp-text">0/0</span>
+        </div>
+
+        <div id="sub-entries">
+            <button onclick="switchPokemon(1)" id="entry-1">대기 1</button>
+            <button onclick="switchPokemon(2)" id="entry-2">대기 2</button>
+        </div>
+        
+        <div class="actions">
+            <button onclick="attack()">공격하기</button>
+        </div>
     </div>
+</div>
+
 </div>
 
 <script type="module">
