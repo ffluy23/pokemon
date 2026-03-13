@@ -10,27 +10,24 @@
 <h1>엔트리 1 테스트</h1>
 
 <div id="gameArea">
-<div id="battle-scene">
-    <div style="border: 1px solid red; padding: 10px; margin-bottom: 20px;">
-        <h3>상대방: <span id="p2-name">접속 대기 중...</span></h3>
-        <div id="p2-active-info">
-            <strong id="p2-active-name">-</strong> | 
-            HP: <span id="p2-active-hp">0/0</span>
-        </div>
-        <div id="p2-bench" style="font-size: 0.8rem; color: gray;"></div>
+<div id="battle-ui">
+    <div id="p2-area">
+        <h3>P2: <span id="player2_name">대기 중...</span></h3>
+        <p>현재 포켓몬: <strong id="player2_active_name">-</strong></p>
+        <p>HP: <span id="player2_hp">0</span> / <span id="p2-max-hp">0</span></p>
+        <div id="p2-bench" style="font-size:0.8rem; color:gray;"></div>
     </div>
 
-    <div style="border: 1px solid blue; padding: 10px;">
-        <h3>나: <span id="p1-name">불러오는 중...</span></h3>
-        <div id="p1-active-info">
-            <strong id="p1-active-name">-</strong> | 
-            HP: <span id="p1-active-hp">0/0</span>
-        </div>
-        
-        <div id="p1-bench-buttons" style="margin: 10px 0;">
-            </div>
+    <hr>
 
-        <button id="attackBtn" style="padding: 10px 20px;">공격하기</button>
+    <div id="p1-area">
+        <h3>P1: <span id="player1_name">대기 중...</span></h3>
+        <p>현재 포켓몬: <strong id="player1_active_name">-</strong></p>
+        <p>HP: <span id="player1_hp">0</span> / <span id="p1-max-hp">0</span></p>
+        
+        <div id="p1-controls">
+            <div id="p1-bench-btns"></div> <button id="attackBtn">공격!</button>
+        </div>
     </div>
 </div>
 
