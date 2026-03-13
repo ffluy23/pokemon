@@ -29,46 +29,53 @@ function listenRoom() {
   onSnapshot(roomRef, (snap) => {
     const data = snap.data()
     if (!data) return
-
-    // battleroom.js에서 복사 완료될 때까지 대기
     if (!data.p1_entry || !data.p2_entry) return
 
+    const enemySlot = mySlot === "p1" ? "p2" : "p1"
+
+    // 플레이어 이름
     document.getElementById("p1-name").innerText = data.player1_name ?? "대기..."
     document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
 
-    updatePokemonUI("p1", data)
-    updatePokemonUI("p2", data)
+    // 내 포켓몬 / 상대 포켓몬 UI
+    updateActiveUI(mySlot, data, "my")
+    updateActiveUI(enemySlot, data, "enemy")
+
+    // 교체 버튼
     updateBenchButtons(data)
   })
 }
 
-function updatePokemonUI(slot, data) {
+// 현재 싸우는 포켓몬 이름/HP 표시
+function updateActiveUI(slot, data, prefix) {
   const activeIdx = data[`${slot}_active_idx`]
-  const activePokemon = data[`${slot}_entry`][activeIdx]
-  if (!activePokemon) return
+  const pokemon = data[`${slot}_entry`][activeIdx]
+  if (!pokemon) return
 
-  document.getElementById(`${slot}-active-name`).innerText = activePokemon.name
-  document.getElementById(`${slot}-active-hp`).innerText = `${activePokemon.hp} / 100`
+  document.getElementById(`${prefix}-active-name`).innerText = pokemon.name
+  document.getElementById(`${prefix}-active-hp`).innerText = `HP: ${pokemon.hp} / 100`
 }
 
+// 교체 버튼 렌더링 (동적 생성)
 function updateBenchButtons(data) {
+  const benchContainer = document.getElementById("bench-container")
+  benchContainer.innerHTML = ""
+
   const myEntry = data[`${mySlot}_entry`]
   const activeIdx = data[`${mySlot}_active_idx`]
 
-  let btnCount = 0
   myEntry.forEach((pkmn, idx) => {
-    if (idx === activeIdx) return
+    if (idx === activeIdx) return  // 현재 싸우는 포켓몬 제외
+    if (pkmn.hp <= 0) return       // 기절한 포켓몬 제외
 
-    const btn = document.getElementById(`bench-btn-${btnCount}`)
-    if (btn) {
-      btn.style.display = "inline-block"
-      btn.innerText = `${pkmn.name} (HP: ${pkmn.hp})`
-      btn.onclick = () => switchPokemon(idx)
-    }
-    btnCount++
+    const btn = document.createElement("button")
+    btn.innerText = `${pkmn.name} (HP: ${pkmn.hp})`
+    btn.onclick = () => switchPokemon(idx)
+    benchContainer.appendChild(btn)
   })
 }
 
+// 교체 실행
 async function switchPokemon(newIdx) {
   await updateDoc(roomRef, {
     [`${mySlot}_active_idx`]: newIdx
