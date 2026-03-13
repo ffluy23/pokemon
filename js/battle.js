@@ -15,11 +15,12 @@ const app = initializeApp(firebaseConfig)
 const db = getFirestore(app)
 
 let roomRef
-let myPlayer = "player1"   // 테스트용
+let myPlayer = "player1" // 테스트용
 
 export async function loadBattle(roomId){
 
-roomRef = doc(db,"battleroom",roomId)
+// 🔥 여기 수정 (battleroom → rooms)
+roomRef = doc(db,"rooms",roomId)
 
 await initBattle()
 
@@ -28,15 +29,17 @@ attackBtn.onclick = attack
 
 onSnapshot(roomRef,(snap)=>{
 
+if(!snap.exists()) return
+
 const data = snap.data()
 
-document.getElementById("p1_name").innerText = data.player1_name
-document.getElementById("p2_name").innerText = data.player2_name
+document.getElementById("p1_name").innerText = data.player1_name || ""
+document.getElementById("p2_name").innerText = data.player2_name || ""
 
-document.getElementById("p1_hp").innerText = data.player1_hp
-document.getElementById("p2_hp").innerText = data.player2_hp
+document.getElementById("p1_hp").innerText = data.player1_hp ?? ""
+document.getElementById("p2_hp").innerText = data.player2_hp ?? ""
 
-document.getElementById("turnText").innerText = "현재 턴 : " + data.turn
+document.getElementById("turnText").innerText = "현재 턴 : " + (data.turn || "")
 
 if(data.turn === myPlayer){
 attackBtn.disabled = false
@@ -51,9 +54,15 @@ attackBtn.disabled = true
 async function initBattle(){
 
 const snap = await getDoc(roomRef)
+
+if(!snap.exists()) return
+
 const data = snap.data()
 
-if(data.player1_hp && data.player2_hp) return
+// 이미 HP 있으면 초기화 안함
+if(data.player1_hp !== undefined && data.player2_hp !== undefined){
+return
+}
 
 const p1Ref = doc(db,"users",data.player1_uid)
 const p2Ref = doc(db,"users",data.player2_uid)
