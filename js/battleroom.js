@@ -60,13 +60,19 @@ function listenRoom() {
       "Player2: " + (room.player2_name ?? "대기...")
 
     if (room.player1_ready && room.player2_ready && !room.game_started) {
-      // 각자 자기 entry를 룸 문서에 복사
+      // 각자 자기 entry를 룸 문서에 복사 + maxHp 추가
       const firestoreSlot = mySlot === "player1" ? "p1" : "p2"
       const userSnap = await getDoc(doc(db, "users", myUid))
       const myEntry = userSnap.data()?.entry ?? []
 
+      // 원본 hp를 maxHp로 저장해두고 복사
+      const myEntryWithMax = myEntry.map(pkmn => ({
+        ...pkmn,
+        maxHp: pkmn.hp
+      }))
+
       await updateDoc(roomRef, {
-        [`${firestoreSlot}_entry`]: myEntry,
+        [`${firestoreSlot}_entry`]: myEntryWithMax,
         [`${firestoreSlot}_active_idx`]: 0,
       })
 
