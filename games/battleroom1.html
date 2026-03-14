@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>배틀룸1</title>
   <style>
-    /* 주사위 2개 */
     #dice-wrap {
       display: none;
       justify-content: center;
@@ -12,9 +11,7 @@
       gap: 40px;
       margin: 20px 0;
     }
-    .dice-box {
-      text-align: center;
-    }
+    .dice-box { text-align: center; }
     .dice-box span {
       display: block;
       font-size: 12px;
@@ -28,7 +25,6 @@
       min-width: 80px;
       text-align: center;
     }
-
     #turn-display {
       font-size: 20px;
       font-weight: bold;
@@ -38,6 +34,23 @@
       font-size: 14px;
       color: gray;
     }
+
+    /* 기술 버튼 2x2 그리드 */
+    #move-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      max-width: 320px;
+      margin: 12px 0;
+    }
+    #move-buttons button {
+      padding: 10px;
+      font-size: 13px;
+      white-space: pre-line;  /* \n 줄바꿈 적용 */
+      text-align: center;
+      line-height: 1.4;
+    }
+
     #battle-log {
       width: 100%;
       max-height: 150px;
@@ -98,9 +111,12 @@
     <p id="my-active-hp">HP: - / -</p>
   </div>
 
-  <!-- 공격 버튼 -->
-  <div>
-    <button id="attackBtn" disabled>공격</button>
+  <!-- 기술 버튼 2x2 -->
+  <div id="move-buttons">
+    <button id="move-btn-0" disabled>-</button>
+    <button id="move-btn-1" disabled>-</button>
+    <button id="move-btn-2" disabled>-</button>
+    <button id="move-btn-3" disabled>-</button>
   </div>
 
   <!-- 교체 버튼 -->
