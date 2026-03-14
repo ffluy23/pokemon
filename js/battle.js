@@ -29,7 +29,7 @@ onAuthStateChanged(auth, async (user) => {
   if (isSpectator) {
     const turnDisplay = document.getElementById("turn-display")
     if (turnDisplay) {
-      turnDisplay.innerText = "👁 관전 중"
+      turnDisplay.innerText = "관전 중"
       turnDisplay.style.color = "gray"
     }
     const leaveBtn = document.getElementById("leaveBtn")
