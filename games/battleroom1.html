@@ -1,14 +1,55 @@
 <!DOCTYPE html>
-
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <title>배틀룸1</title>
+  <style>
+    #dice-display {
+      display: none;
+      font-size: 64px;
+      font-weight: bold;
+      text-align: center;
+      color: #e63946;
+      margin: 20px 0;
+    }
+    #turn-display {
+      font-size: 20px;
+      font-weight: bold;
+      margin: 8px 0;
+    }
+    #turn-count {
+      font-size: 14px;
+      color: gray;
+    }
+    #battle-log {
+      width: 100%;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 8px;
+      background: #f9f9f9;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    #battle-log p {
+      margin: 2px 0;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  </style>
 </head>
 <body>
 
-  <!-- 플레이어 이름 -->
+  <!-- 주사위 모션 -->
+  <div id="dice-display"></div>
 
+  <!-- 턴 표시 -->
+  <div id="turn-display">대기 중...</div>
+  <div id="turn-count"></div>
+
+  <!-- 플레이어 이름 -->
   <div>
     <span id="p1-name">Player1</span>
     vs
@@ -18,7 +59,6 @@
   <hr>
 
   <!-- 상대 포켓몬 -->
-
   <div>
     <h3>상대 포켓몬</h3>
     <p id="enemy-active-name">-</p>
@@ -28,24 +68,32 @@
   <hr>
 
   <!-- 내 포켓몬 -->
-
   <div>
     <h3>내 포켓몬</h3>
     <p id="my-active-name">-</p>
     <p id="my-active-hp">HP: - / -</p>
   </div>
 
-  <!-- 교체 버튼 (battle.js가 동적으로 생성) -->
+  <!-- 공격 버튼 -->
+  <div>
+    <button id="attackBtn" disabled>공격</button>
+  </div>
 
+  <!-- 교체 버튼 -->
   <div>
     <h4>교체할 포켓몬</h4>
     <div id="bench-container"></div>
   </div>
 
+  <!-- 배틀 로그 -->
+  <div>
+    <h4>배틀 로그</h4>
+    <div id="battle-log"></div>
+  </div>
+
   <script>
     const ROOM_ID = "battleroom1"
   </script>
-
   <script type="module" src="../js/battle.js"></script>
 
 </body>
