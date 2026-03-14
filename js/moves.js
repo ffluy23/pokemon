@@ -10,11 +10,9 @@
 
 export const moves = {
   // 노말
-  "전광석화":       { power: 40, type: "노말", alwaysHit: false, effect: null },
-  "스위프트":       { power: 40, type: "노말", alwaysHit: true,  effect: null },
-  "몸통박치기":     { power: 40, type: "노말", alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
+  "전광석화":       { power: 40, type: "노말", alwaysHit: true, effect: null },
+  "몸통박치기":     { power: 40, type: "노말", alwaysHit: false, effect: null },
   "하이퍼보이스":   { power: 40, type: "노말", alwaysHit: false, effect: null },
-  "극대화포":       { power: 40, type: "노말", alwaysHit: false, effect: null },
 
   // 불
   "화염방사":       { power: 40, type: "불", alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
