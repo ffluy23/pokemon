@@ -10,19 +10,29 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) return
   myUid = user.uid
 
-  // ── 재접속 체크: users.room 기반으로 게임 중인 방 확인
   const userSnap = await getDoc(doc(db, "users", myUid))
   const userData = userSnap.data()
-  const userRoomId = userData?.room ? `battleroom${userData.room}` : null
+  const userRoomNum = userData?.room  // number: 1, 2, 3
+  const userRoomId = userRoomNum ? `battleroom${userRoomNum}` : null
 
-  if (userRoomId && userRoomId !== ROOM_ID) {
-    // 다른 방에서 게임 중인지 확인
+  // ── 게임 중인 방이 있는 경우
+  if (userRoomId) {
     const activeRoomSnap = await getDoc(doc(db, "rooms", userRoomId))
     const activeRoom = activeRoomSnap.data()
+
     if (activeRoom?.game_started) {
-      // 게임 중인 방으로 자동 이동
-      location.href = `../games/${userRoomId}.html`
-      return
+      if (userRoomId === ROOM_ID) {
+        // 이 방에서 게임 중 → 튕겼다가 재접속: 바로 게임 화면으로
+        const roomNumber = ROOM_ID.replace("battleroom", "")
+        location.href = `../games/battleroom${roomNumber}.html`
+        return
+      } else {
+        // 다른 방에서 게임 중 → 이 방 입장 불가
+        alert(`현재 battleroom${userRoomNum}에서 게임 중입니다. 해당 방으로 이동합니다.`)
+        const roomNumber = userRoomId.replace("battleroom", "")
+        location.href = `../games/battleroom${roomNumber}.html`
+        return
+      }
     }
   }
 
@@ -42,22 +52,11 @@ async function joinRoom() {
   if (room.player1_uid === myUid) { mySlot = "player1"; return }
   if (room.player2_uid === myUid) { mySlot = "player2"; return }
 
-  // 게임 중인 방에는 새로 입장 불가
+  // 게임 중인 방에 새로 입장 불가
   if (room.game_started) {
     alert("이미 게임이 진행 중인 방입니다.")
     location.href = "../main.html"
     return
-  }
-
-  // 다른 방에서 게임 중이면 입장 불가
-  const userRoomId = userData?.room ? `battleroom${userData.room}` : null
-  if (userRoomId && userRoomId !== ROOM_ID) {
-    const otherRoomSnap = await getDoc(doc(db, "rooms", userRoomId))
-    if (otherRoomSnap.data()?.game_started) {
-      alert("이미 다른 방에서 게임 중입니다.")
-      location.href = "../main.html"
-      return
-    }
   }
 
   // 빈 슬롯에 입장
@@ -79,9 +78,7 @@ function listenRoom() {
 
     // leave 버튼: 게임 중이면 비활성화
     const leaveBtn = document.getElementById("leaveBtn")
-    if (leaveBtn) {
-      leaveBtn.disabled = !!room.game_started
-    }
+    if (leaveBtn) leaveBtn.disabled = !!room.game_started
 
     if (room.player1_ready && room.player2_ready && !room.game_started) {
       const firestoreSlot = mySlot === "player1" ? "p1" : "p2"
@@ -115,12 +112,10 @@ function setupButtons() {
   document.getElementById("leaveBtn").onclick = async () => {
     const roomSnap = await getDoc(roomRef)
     const room = roomSnap.data()
-
     if (room.game_started) {
       alert("도망칠 수 없다!")
       return
     }
-
     await leaveRoom()
   }
 }
