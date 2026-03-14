@@ -13,6 +13,9 @@ let actionDone = false
 let gameOver = false
 let renderedLogCount = 0
 
+// URL에 ?spectator=true 붙어있으면 관전자 모드
+const isSpectator = new URLSearchParams(location.search).get("spectator") === "true"
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) return
   myUid = user.uid
@@ -20,6 +23,15 @@ onAuthStateChanged(auth, async (user) => {
   const roomSnap = await getDoc(roomRef)
   const room = roomSnap.data()
   mySlot = room.player1_uid === myUid ? "p1" : "p2"
+
+  // 관전자면 UI에 표시
+  if (isSpectator) {
+    const turnDisplay = document.getElementById("turn-display")
+    if (turnDisplay) {
+      turnDisplay.innerText = "👁 관전 중"
+      turnDisplay.style.color = "gray"
+    }
+  }
 
   listenRoom()
 })
@@ -41,12 +53,10 @@ function calcDamage(attacker, moveName, defender) {
 
   const dice = rollD10()
   const multiplier = getTypeMultiplier(move.type, defender.type)
-
   if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice }
 
   const stab = attacker.type === move.type
   const stabMult = stab ? 1.3 : 1
-
   const base = 40 + (attacker.attack ?? 3) * 4 + dice
   const raw = Math.floor(base * multiplier * stabMult)
   const damage = Math.max(0, raw - (defender.defense ?? 3) * 5)
@@ -54,7 +64,7 @@ function calcDamage(attacker, moveName, defender) {
   return { damage, multiplier, stab, dice }
 }
 
-// ── 주사위 2개 모션 (선공 판정용)
+// ── 주사위 2개 모션
 function animateDualDice(p1Roll, p2Roll, onDone) {
   const p1El = document.getElementById("dice-p1")
   const p2El = document.getElementById("dice-p2")
@@ -83,7 +93,7 @@ function animateDualDice(p1Roll, p2Roll, onDone) {
   }, 60)
 }
 
-// ── 명중 판정 주사위 모션 (단일)
+// ── 명중 판정 주사위 모션
 function animateHitDice(roll, onDone) {
   const el = document.getElementById("dice-hit")
   const wrap = document.getElementById("dice-wrap")
@@ -145,26 +155,6 @@ async function initTurn(data) {
   })
 }
 
-// ── 게임 종료 처리
-async function handleGameOver(winner, loser, currentLog) {
-  if (gameOver) return
-  gameOver = true
-
-  const newLog = [
-    ...currentLog,
-    `══════════════`,
-    `${winner}의 승리! ${loser}의 패배!`,
-    `══════════════`
-  ]
-
-  await updateDoc(roomRef, {
-    game_over: true,
-    winner: winner,
-    current_turn: null,
-    battle_log: newLog
-  })
-}
-
 // ── 실시간 리스닝
 function listenRoom() {
   onSnapshot(roomRef, async (snap) => {
@@ -174,6 +164,13 @@ function listenRoom() {
     document.getElementById("p1-name").innerText = data.player1_name ?? "대기..."
     document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
 
+    // 관전자 목록 표시
+    const spectEl = document.getElementById("spectator-list")
+    if (spectEl) {
+      const names = data.spectator_names ?? []
+      spectEl.innerText = names.length > 0 ? "👁 관전: " + names.join(", ") : ""
+    }
+
     syncLog(data.battle_log ?? [])
 
     if (!data.p1_entry || !data.p2_entry) return
@@ -182,34 +179,45 @@ function listenRoom() {
     updateActiveUI(mySlot, data, "my")
     updateActiveUI(enemySlot, data, "enemy")
 
-    // 게임 종료 상태
     if (data.game_over) {
       showGameOver(data)
       return
     }
 
     if (!data.current_turn) {
-      if (mySlot === "p1") {
+      // 관전자는 선공 판정 실행 안 함
+      if (!isSpectator && mySlot === "p1") {
         initTurn(data)
-      } else {
+      } else if (!isSpectator && mySlot === "p2") {
         if (!gameStarted) {
           gameStarted = true
           setTimeout(async () => {
             const s = await getDoc(roomRef)
             const d = s.data()
-            if (d.p1_dice && d.p2_dice) {
-              animateDualDice(d.p1_dice, d.p2_dice, () => {})
-            }
+            if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
           }, 1000)
+        }
+      } else if (isSpectator) {
+        // 관전자는 주사위 모션만 보여줌
+        if (!gameStarted) {
+          gameStarted = true
+          setTimeout(async () => {
+            const s = await getDoc(roomRef)
+            const d = s.data()
+            if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
+          }, 1500)
         }
       }
       return
     }
 
-    myTurn = data.current_turn === mySlot
-    actionDone = false
+    // 관전자는 턴 판단 없음
+    if (!isSpectator) {
+      myTurn = data.current_turn === mySlot
+      actionDone = false
+      updateTurnUI(data)
+    }
 
-    updateTurnUI(data)
     updateBenchButtons(data)
     updateMoveButtons(data)
   })
@@ -218,12 +226,18 @@ function listenRoom() {
 // ── 게임 종료 UI
 function showGameOver(data) {
   const turnDisplay = document.getElementById("turn-display")
-  const myName = mySlot === "p1" ? data.player1_name : data.player2_name
-  const isWinner = data.winner === myName
-
-  if (turnDisplay) {
-    turnDisplay.innerText = isWinner ? "🏆 승리!" : "💀 패배..."
-    turnDisplay.style.color = isWinner ? "gold" : "red"
+  if (isSpectator) {
+    if (turnDisplay) {
+      turnDisplay.innerText = `🏆 ${data.winner} 승리!`
+      turnDisplay.style.color = "gold"
+    }
+  } else {
+    const myName = mySlot === "p1" ? data.player1_name : data.player2_name
+    const isWinner = data.winner === myName
+    if (turnDisplay) {
+      turnDisplay.innerText = isWinner ? "🏆 승리!" : "💀 패배..."
+      turnDisplay.style.color = isWinner ? "gold" : "red"
+    }
   }
 
   // 모든 버튼 비활성화
@@ -234,22 +248,19 @@ function showGameOver(data) {
   const benchContainer = document.getElementById("bench-container")
   if (benchContainer) benchContainer.innerHTML = ""
 
-  // leave 버튼 표시
-  const leaveBtn = document.getElementById("leaveBtn")
-  if (leaveBtn) {
-    leaveBtn.style.display = "inline-block"
-    leaveBtn.disabled = false
-    leaveBtn.innerText = "방 나가기"
-    leaveBtn.onclick = () => leaveGame()
+  // 관전자는 leave 버튼 없이 그냥 닫으면 됨
+  if (!isSpectator) {
+    const leaveBtn = document.getElementById("leaveBtn")
+    if (leaveBtn) {
+      leaveBtn.style.display = "inline-block"
+      leaveBtn.disabled = false
+      leaveBtn.innerText = "방 나가기"
+      leaveBtn.onclick = () => leaveGame()
+    }
   }
 }
 
-// ── 게임 종료 후 방 나가기
 async function leaveGame() {
-  const snap = await getDoc(roomRef)
-  const data = snap.data()
-
-  // 방 초기화
   await updateDoc(roomRef, {
     player1_uid: null, player1_name: null, player1_ready: false,
     player2_uid: null, player2_name: null, player2_ready: false,
@@ -259,7 +270,6 @@ async function leaveGame() {
     p1_active_idx: 0, p2_active_idx: 0,
     battle_log: []
   })
-
   location.href = "../main.html"
 }
 
@@ -268,7 +278,6 @@ function syncLog(logs) {
   const log = document.getElementById("battle-log")
   if (!log) return
   if (logs.length <= renderedLogCount) return
-
   for (let i = renderedLogCount; i < logs.length; i++) {
     const line = document.createElement("p")
     line.innerText = logs[i]
@@ -278,18 +287,17 @@ function syncLog(logs) {
   log.scrollTop = log.scrollHeight
 }
 
-// ── 현재 싸우는 포켓몬 UI
+// ── 포켓몬 UI
 function updateActiveUI(slot, data, prefix) {
   const activeIdx = data[`${slot}_active_idx`]
   const pokemon = data[`${slot}_entry`][activeIdx]
   if (!pokemon) return
-
   document.getElementById(`${prefix}-active-name`).innerText = pokemon.name
   document.getElementById(`${prefix}-active-hp`).innerText =
     `HP: ${pokemon.hp} / ${pokemon.maxHp}`
 }
 
-// ── 기술 버튼 (2x2)
+// ── 기술 버튼 (관전자면 전부 비활성화)
 function updateMoveButtons(data) {
   const myActiveIdx = data[`${mySlot}_active_idx`]
   const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
@@ -310,7 +318,8 @@ function updateMoveButtons(data) {
     const move = movesArr[i]
     btn.innerText = `${move.name}\nPP: ${move.pp}`
 
-    if (fainted || move.pp <= 0 || !myTurn || actionDone) {
+    // 관전자는 무조건 비활성화
+    if (isSpectator || fainted || move.pp <= 0 || !myTurn || actionDone) {
       btn.disabled = true
       btn.onclick = null
     } else {
@@ -320,7 +329,7 @@ function updateMoveButtons(data) {
   }
 }
 
-// ── 교체 버튼
+// ── 교체 버튼 (관전자면 전부 비활성화)
 function updateBenchButtons(data) {
   const benchContainer = document.getElementById("bench-container")
   benchContainer.innerHTML = ""
@@ -336,8 +345,9 @@ function updateBenchButtons(data) {
       btn.disabled = true
     } else {
       btn.innerText = `${pkmn.name} (HP: ${pkmn.hp} / ${pkmn.maxHp})`
-      btn.disabled = !myTurn || actionDone
-      btn.onclick = () => switchPokemon(idx)
+      // 관전자는 비활성화
+      btn.disabled = isSpectator || !myTurn || actionDone
+      if (!isSpectator) btn.onclick = () => switchPokemon(idx)
     }
     benchContainer.appendChild(btn)
   })
@@ -345,7 +355,7 @@ function updateBenchButtons(data) {
 
 // ── 기술 사용
 async function useMove(moveIdx, data) {
-  if (!myTurn || actionDone || gameOver) return
+  if (isSpectator || !myTurn || actionDone || gameOver) return
   actionDone = true
   updateMoveButtons(data)
 
@@ -367,10 +377,8 @@ async function useMove(moveIdx, data) {
   const moveData = myPokemon.moves[moveIdx]
   if (!moveData || moveData.pp <= 0) { actionDone = false; return }
 
-  // PP 차감
   myPokemon.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
 
-  // 명중 판정
   const hitRoll = rollD10()
   const hitValue = (myPokemon.speed ?? 3) + hitRoll
   const defValue = (enePokemon.speed ?? 3) + 3
@@ -387,7 +395,6 @@ async function useMove(moveIdx, data) {
       newLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
     } else {
       const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
-
       if (multiplier === 0) {
         newLines.push(`${enePokemon.name}에게는 효과가 없다...`)
       } else {
@@ -402,35 +409,26 @@ async function useMove(moveIdx, data) {
     }
 
     const updatedLog = [...currentLog, ...newLines]
-
-    // 승패 체크
     const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
     const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
 
     if (isAllFainted(enemyEntry)) {
       await updateDoc(roomRef, {
-        [`${mySlot}_entry`]:    myEntry,
-        [`${enemySlot}_entry`]: enemyEntry,
+        [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
         turn_count: (freshData.turn_count ?? 1) + 1,
-        game_over: true,
-        winner: myName,
-        current_turn: null,
+        game_over: true, winner: myName, current_turn: null,
         battle_log: [...updatedLog, "══════════════", `${myName}의 승리! ${enemyName}의 패배!`, "══════════════"]
       })
     } else if (isAllFainted(myEntry)) {
       await updateDoc(roomRef, {
-        [`${mySlot}_entry`]:    myEntry,
-        [`${enemySlot}_entry`]: enemyEntry,
+        [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
         turn_count: (freshData.turn_count ?? 1) + 1,
-        game_over: true,
-        winner: enemyName,
-        current_turn: null,
+        game_over: true, winner: enemyName, current_turn: null,
         battle_log: [...updatedLog, "══════════════", `${enemyName}의 승리! ${myName}의 패배!`, "══════════════"]
       })
     } else {
       await updateDoc(roomRef, {
-        [`${mySlot}_entry`]:    myEntry,
-        [`${enemySlot}_entry`]: enemyEntry,
+        [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
         current_turn: enemySlot,
         turn_count: (freshData.turn_count ?? 1) + 1,
         battle_log: updatedLog
@@ -439,9 +437,9 @@ async function useMove(moveIdx, data) {
   })
 }
 
-// ── 교체 (후공)
+// ── 교체
 async function switchPokemon(newIdx) {
-  if (!myTurn || actionDone || gameOver) return
+  if (isSpectator || !myTurn || actionDone || gameOver) return
   actionDone = true
 
   const snap = await getDoc(roomRef)
@@ -463,7 +461,7 @@ async function switchPokemon(newIdx) {
 // ── 턴 UI
 function updateTurnUI(data) {
   const el = document.getElementById("turn-display")
-  if (el) {
+  if (el && !isSpectator) {
     el.innerText = myTurn ? "내 턴!" : "상대 턴..."
     el.style.color = myTurn ? "green" : "gray"
   }
