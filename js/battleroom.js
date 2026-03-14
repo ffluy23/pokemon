@@ -26,7 +26,7 @@ onAuthStateChanged(auth, async (user) => {
   const userRoomNum = userData?.room
   const userRoomId = userRoomNum ? `battleroom${userRoomNum}` : null
 
-  // 재접속 체크 (플레이어만 강제 이동)
+  // 재접속 체크 
   if (userRoomId && userRoomId !== ROOM_ID) {
     const activeRoomSnap = await getDoc(doc(db, "rooms", userRoomId))
     const activeRoom = activeRoomSnap.data()
