@@ -10,7 +10,7 @@
 
 export const moves = {
   // 노말
-  "전광석화":       { power: 40, type: "노말", alwaysHit: true, effect: null },
+  "전광석화":       { power: 30, type: "노말", alwaysHit: true, effect: null },
   "몸통박치기":     { power: 40, type: "노말", alwaysHit: false, effect: null },
   "하이퍼보이스":   { power: 40, type: "노말", alwaysHit: false, effect: null },
 
