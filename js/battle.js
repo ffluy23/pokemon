@@ -29,7 +29,7 @@ onAuthStateChanged(auth, async (user) => {
   if (isSpectator) {
     const turnDisplay = document.getElementById("turn-display")
     if (turnDisplay) {
-      turnDisplay.innerText = "관전 중"
+      turnDisplay.innerText = "👁 관전 중"
       turnDisplay.style.color = "gray"
     }
     const leaveBtn = document.getElementById("leaveBtn")
@@ -66,7 +66,7 @@ function calcDamage(attacker, moveName, defender) {
 
   const stab = attacker.type === move.type
   const stabMult = stab ? 1.3 : 1
-  const base = 40 + (attacker.attack ?? 3) * 4 + dice
+  const base = (move.power ?? 40) + (attacker.attack ?? 3) * 4 + dice
   const raw = Math.floor(base * multiplier * stabMult)
   const damage = Math.max(0, raw - (defender.defense ?? 3) * 5)
 
