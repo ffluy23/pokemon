@@ -1,6 +1,6 @@
 import { auth, db } from "./firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
-import { doc, getDoc, updateDoc, arrayUnion, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 import { moves } from "./moves.js"
 import { getTypeMultiplier } from "./typeChart.js"
 
@@ -10,7 +10,7 @@ let myUid = null
 let myTurn = false
 let gameStarted = false
 let actionDone = false
-let renderedLogCount = 0  // 이미 렌더된 로그 줄 수
+let renderedLogCount = 0
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) return
@@ -23,13 +23,12 @@ onAuthStateChanged(auth, async (user) => {
   listenRoom()
 })
 
-// ── 1d10
+// ── 1d10 (1~10 보장)
 function rollD10() {
   return Math.floor(Math.random() * 10) + 1
 }
 
 // ── 데미지 계산
-// 공식: ((40 + attack×4 + 1d10) × 타입상성 × 자속보정) - (defense×5), 최솟값 0
 function calcDamage(attacker, moveName, defender) {
   const move = moves[moveName]
   if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0 }
@@ -39,8 +38,7 @@ function calcDamage(attacker, moveName, defender) {
 
   if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice }
 
-  // 자속보정: 포켓몬 타입 == 기술 타입일 때만
-  const stab = (attacker.type === move.type)
+  const stab = attacker.type === move.type
   const stabMult = stab ? 1.3 : 1
 
   const base = 40 + (attacker.attack ?? 3) * 4 + dice
@@ -67,8 +65,8 @@ function animateDualDice(p1Roll, p2Roll, onDone) {
 
   let count = 0
   const interval = setInterval(() => {
-    if (p1El) p1El.innerText = Math.floor(Math.random() * 10) + 1
-    if (p2El) p2El.innerText = Math.floor(Math.random() * 10) + 1
+    if (p1El) p1El.innerText = rollD10()
+    if (p2El) p2El.innerText = rollD10()
     count++
     if (count >= 15) {
       clearInterval(interval)
@@ -95,7 +93,7 @@ function animateHitDice(roll, onDone) {
 
   let count = 0
   const interval = setInterval(() => {
-    if (el) el.innerText = Math.floor(Math.random() * 10) + 1
+    if (el) el.innerText = rollD10()
     count++
     if (count >= 15) {
       clearInterval(interval)
@@ -150,7 +148,6 @@ function listenRoom() {
     document.getElementById("p1-name").innerText = data.player1_name ?? "대기..."
     document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
 
-    // 로그 동기화 (새로 추가된 것만)
     syncLog(data.battle_log ?? [])
 
     if (!data.p1_entry || !data.p2_entry) return
@@ -186,7 +183,7 @@ function listenRoom() {
   })
 }
 
-// ── 로그 동기화 (새로 추가된 항목만 렌더)
+// ── 로그 동기화 (새 항목만 렌더)
 function syncLog(logs) {
   const log = document.getElementById("battle-log")
   if (!log) return
@@ -300,25 +297,28 @@ async function useMove(moveIdx, data) {
   const isHit = hitValue > defValue
 
   animateHitDice(hitRoll, async () => {
-    const logLines = []
-    logLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
-    logLines.push(`명중: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue} → ${isHit ? "명중!" : "빗나감!"}`)
+    // 기존 로그 가져와서 새 줄 추가 후 통째로 저장 (arrayUnion 사용 안 함)
+    const currentLog = freshData.battle_log ?? []
+    const newLines = []
+
+    newLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
+    newLines.push(`명중: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue} → ${isHit ? "명중!" : "빗나감!"}`)
 
     if (!isHit) {
-      logLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
+      newLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
     } else {
       const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
 
       if (multiplier === 0) {
-        logLines.push(`${enePokemon.name}에게는 효과가 없다...`)
+        newLines.push(`${enePokemon.name}에게는 효과가 없다...`)
       } else {
-        if (multiplier === 1.8) logLines.push("효과가 굉장했다!")
-        if (multiplier === 0.8) logLines.push("효과가 별로인 것 같다...")
-        if (stab) logLines.push("자속보정!")
-        logLines.push(`주사위 ${dice} → ${enePokemon.name}에게 ${damage} 데미지`)
+        if (multiplier === 1.8) newLines.push("효과가 굉장했다!")
+        if (multiplier === 0.8) newLines.push("효과가 별로인 것 같다...")
+        if (stab) newLines.push("자속보정!")
+        newLines.push(`주사위 ${dice} → ${enePokemon.name}에게 ${damage} 데미지`)
         enePokemon.hp = Math.max(0, enePokemon.hp - damage)
-        logLines.push(`${enePokemon.name} HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
-        if (enePokemon.hp <= 0) logLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
+        newLines.push(`${enePokemon.name} HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
+        if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
       }
     }
 
@@ -327,7 +327,7 @@ async function useMove(moveIdx, data) {
       [`${enemySlot}_entry`]: enemyEntry,
       current_turn: enemySlot,
       turn_count: (freshData.turn_count ?? 1) + 1,
-      battle_log: arrayUnion(...logLines)
+      battle_log: [...currentLog, ...newLines]  // 통째로 덮어쓰기
     })
   })
 }
@@ -343,12 +343,13 @@ async function switchPokemon(newIdx) {
   const myEntry = data[`${mySlot}_entry`]
   const prevName = myEntry[data[`${mySlot}_active_idx`]].name
   const nextName = myEntry[newIdx].name
+  const currentLog = data.battle_log ?? []
 
   await updateDoc(roomRef, {
     [`${mySlot}_active_idx`]: newIdx,
     current_turn: enemySlot,
     turn_count: (data.turn_count ?? 1) + 1,
-    battle_log: arrayUnion(`${prevName} 교체! ${nextName} 등장!`)
+    battle_log: [...currentLog, `${prevName} 교체! ${nextName} 등장!`]
   })
 }
 
