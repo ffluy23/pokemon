@@ -7,7 +7,7 @@ import { moves } from "./moves.js"
 import { getTypeMultiplier } from "./typeChart.js"
 
 const roomRef = doc(db, "rooms", ROOM_ID)
-const logsRef = collection(db, "rooms", ROOM_ID, "logs")  // 서브컬렉션
+const logsRef = collection(db, "rooms", ROOM_ID, "logs")
 
 let mySlot = null
 let myUid = null
@@ -42,7 +42,7 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   listenRoom()
-  listenLogs()  // 로그 리스닝 분리
+  listenLogs()
 })
 
 // ── 1d10
@@ -73,20 +73,19 @@ function calcDamage(attacker, moveName, defender) {
   return { damage, multiplier, stab, dice }
 }
 
-// ── 로그 추가 (서브컬렉션에 저장)
+// ── 로그 추가
 async function addLog(text) {
   await addDoc(logsRef, { text, ts: Date.now() })
 }
 
 async function addLogs(lines) {
-  // 순서 보장을 위해 ts에 index 더함
   const base = Date.now()
   for (let i = 0; i < lines.length; i++) {
     await addDoc(logsRef, { text: lines[i], ts: base + i })
   }
 }
 
-// ── 로그 실시간 리스닝 (서브컬렉션)
+// ── 로그 실시간 리스닝
 function listenLogs() {
   const q = query(logsRef, orderBy("ts"))
   onSnapshot(q, (snap) => {
@@ -193,7 +192,7 @@ async function initTurn(data) {
   })
 }
 
-// ── 실시간 리스닝 (방 상태)
+// ── 실시간 리스닝
 function listenRoom() {
   onSnapshot(roomRef, async (snap) => {
     const data = snap.data()
@@ -293,10 +292,10 @@ async function leaveAsSpectator() {
   const snap = await getDoc(roomRef)
   const data = snap.data()
   const idx = (data.spectators ?? []).indexOf(myUid)
-  const spectators = (data.spectators ?? []).filter(u => u !== myUid)
-  const spectatorNames = (data.spectator_names ?? []).filter((_, i) => i !== idx)
-
-  await updateDoc(roomRef, { spectators, spectator_names: spectatorNames })
+  await updateDoc(roomRef, {
+    spectators: (data.spectators ?? []).filter(u => u !== myUid),
+    spectator_names: (data.spectator_names ?? []).filter((_, i) => i !== idx)
+  })
   location.href = "../main.html"
 }
 
@@ -401,17 +400,29 @@ async function useMove(moveIdx, data) {
   const moveData = myPokemon.moves[moveIdx]
   if (!moveData || moveData.pp <= 0) { actionDone = false; return }
 
+  // PP 차감
   myPokemon.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
 
+  // moves.js에서 alwaysHit 여부 확인
+  const moveInfo = moves[moveData.name]
+  const alwaysHit = moveInfo?.alwaysHit ?? false
+
+  // 명중 판정
   const hitRoll = rollD10()
   const hitValue = (myPokemon.speed ?? 3) + hitRoll
   const defValue = (enePokemon.speed ?? 3) + 3
-  const isHit = hitValue > defValue
+  const isHit = alwaysHit || hitValue > defValue
 
-  animateHitDice(hitRoll, async () => {
+  // alwaysHit이면 주사위 모션 없이 바로 처리, 아니면 모션 후 처리
+  const processAttack = async () => {
     const newLines = []
     newLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
-    newLines.push(`명중: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue} → ${isHit ? "명중!" : "빗나감!"}`)
+
+    if (alwaysHit) {
+      newLines.push("반드시 명중!")
+    } else {
+      newLines.push(`명중: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue} → ${isHit ? "명중!" : "빗나감!"}`)
+    }
 
     if (!isHit) {
       newLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
@@ -460,7 +471,15 @@ async function useMove(moveIdx, data) {
     }
 
     await addLogs(newLines)
-  })
+  }
+
+  if (alwaysHit) {
+    // 주사위 모션 없이 바로 처리
+    await processAttack()
+  } else {
+    // 명중 주사위 모션 후 처리
+    animateHitDice(hitRoll, processAttack)
+  }
 }
 
 // ── 교체
