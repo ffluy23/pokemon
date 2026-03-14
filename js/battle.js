@@ -29,7 +29,7 @@ onAuthStateChanged(auth, async (user) => {
   if (isSpectator) {
     const turnDisplay = document.getElementById("turn-display")
     if (turnDisplay) {
-      turnDisplay.innerText = "관전 중"
+      turnDisplay.innerText = "👁 관전 중"
       turnDisplay.style.color = "gray"
     }
     const leaveBtn = document.getElementById("leaveBtn")
@@ -85,19 +85,45 @@ async function addLogs(lines) {
   }
 }
 
+// ── 타이핑 효과 로그 시스템
+let renderedLogIds = new Set()
+let typingQueue = []
+let isTyping = false
+
+function processQueue() {
+  if (isTyping || typingQueue.length === 0) return
+  isTyping = true
+
+  const text = typingQueue.shift()
+  const log = document.getElementById("battle-log")
+  if (!log) { isTyping = false; processQueue(); return }
+
+  const line = document.createElement("p")
+  log.appendChild(line)
+
+  let i = 0
+  const interval = setInterval(() => {
+    line.innerText += text[i]
+    i++
+    log.scrollTop = log.scrollHeight
+    if (i >= text.length) {
+      clearInterval(interval)
+      isTyping = false
+      setTimeout(processQueue, 80)
+    }
+  }, 18)
+}
+
 // ── 로그 실시간 리스닝
 function listenLogs() {
   const q = query(logsRef, orderBy("ts"))
   onSnapshot(q, (snap) => {
-    const log = document.getElementById("battle-log")
-    if (!log) return
-    log.innerHTML = ""
     snap.docs.forEach(d => {
-      const line = document.createElement("p")
-      line.innerText = d.data().text
-      log.appendChild(line)
+      if (renderedLogIds.has(d.id)) return
+      renderedLogIds.add(d.id)
+      typingQueue.push(d.data().text)
     })
-    log.scrollTop = log.scrollHeight
+    processQueue()
   })
 }
 
