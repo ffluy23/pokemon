@@ -1,131 +1,472 @@
 import { auth, db } from "./firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
 import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+import { moves } from "./moves.js"
+import { getTypeMultiplier } from "./typeChart.js"
 
 const roomRef = doc(db, "rooms", ROOM_ID)
 let mySlot = null
 let myUid = null
+let myTurn = false
+let gameStarted = false
+let actionDone = false
+let gameOver = false
+let renderedLogCount = 0
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) return
   myUid = user.uid
 
-  const userSnap = await getDoc(doc(db, "users", myUid))
-  const userData = userSnap.data()
-  const userRoomNum = userData?.room  // number: 1, 2, 3
-  const userRoomId = userRoomNum ? `battleroom${userRoomNum}` : null
-
-  // ── 게임 중인 방이 있는 경우
-  if (userRoomId) {
-    const activeRoomSnap = await getDoc(doc(db, "rooms", userRoomId))
-    const activeRoom = activeRoomSnap.data()
-
-    if (activeRoom?.game_started) {
-      if (userRoomId === ROOM_ID) {
-        // 이 방에서 게임 중 → 튕겼다가 재접속: 바로 게임 화면으로
-        const roomNumber = ROOM_ID.replace("battleroom", "")
-        location.href = `../games/battleroom${roomNumber}.html`
-        return
-      } else {
-        // 다른 방에서 게임 중 → 입장 불가
-        alert(`현재 battleroom${userRoomNum}에서 게임 중입니다. 해당 방으로 이동합니다.`)
-        const roomNumber = userRoomId.replace("battleroom", "")
-        location.href = `../games/battleroom${roomNumber}.html`
-        return
-      }
-    }
-  }
-
-  await joinRoom()
-  listenRoom()
-  setupButtons()
-})
-
-async function joinRoom() {
-  const userSnap = await getDoc(doc(db, "users", myUid))
-  const userData = userSnap.data()
-  const nickname = userData.nickname
   const roomSnap = await getDoc(roomRef)
   const room = roomSnap.data()
+  mySlot = room.player1_uid === myUid ? "p1" : "p2"
 
-  // 이미 이 방에 있는 경우
-  if (room.player1_uid === myUid) { mySlot = "player1"; return }
-  if (room.player2_uid === myUid) { mySlot = "player2"; return }
+  listenRoom()
+})
 
-  // 게임 중인 방에 새로 입장 불가
-  if (room.game_started) {
-    alert("이미 게임이 진행 중인 방입니다.")
-    location.href = "../main.html"
-    return
+// ── 1d10
+function rollD10() {
+  return Math.floor(Math.random() * 10) + 1
+}
+
+// ── 전체 기절 체크
+function isAllFainted(entry) {
+  return entry.every(p => p.hp <= 0)
+}
+
+// ── 데미지 계산
+function calcDamage(attacker, moveName, defender) {
+  const move = moves[moveName]
+  if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0 }
+
+  const dice = rollD10()
+  const multiplier = getTypeMultiplier(move.type, defender.type)
+
+  if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice }
+
+  const stab = attacker.type === move.type
+  const stabMult = stab ? 1.3 : 1
+
+  const base = 40 + (attacker.attack ?? 3) * 4 + dice
+  const raw = Math.floor(base * multiplier * stabMult)
+  const damage = Math.max(0, raw - (defender.defense ?? 3) * 5)
+
+  return { damage, multiplier, stab, dice }
+}
+
+// ── 주사위 2개 모션 (선공 판정용)
+function animateDualDice(p1Roll, p2Roll, onDone) {
+  const p1El = document.getElementById("dice-p1")
+  const p2El = document.getElementById("dice-p2")
+  const wrap = document.getElementById("dice-wrap")
+  const p1Box = document.getElementById("dice-box-p1")
+  const p2Box = document.getElementById("dice-box-p2")
+  const hitBox = document.getElementById("dice-box-hit")
+  if (!wrap) { onDone(); return }
+
+  if (p1Box) p1Box.style.display = "block"
+  if (p2Box) p2Box.style.display = "block"
+  if (hitBox) hitBox.style.display = "none"
+  wrap.style.display = "flex"
+
+  let count = 0
+  const interval = setInterval(() => {
+    if (p1El) p1El.innerText = rollD10()
+    if (p2El) p2El.innerText = rollD10()
+    count++
+    if (count >= 15) {
+      clearInterval(interval)
+      if (p1El) p1El.innerText = p1Roll
+      if (p2El) p2El.innerText = p2Roll
+      setTimeout(() => { wrap.style.display = "none"; onDone() }, 1500)
+    }
+  }, 60)
+}
+
+// ── 명중 판정 주사위 모션 (단일)
+function animateHitDice(roll, onDone) {
+  const el = document.getElementById("dice-hit")
+  const wrap = document.getElementById("dice-wrap")
+  const p1Box = document.getElementById("dice-box-p1")
+  const p2Box = document.getElementById("dice-box-p2")
+  const hitBox = document.getElementById("dice-box-hit")
+  if (!wrap) { onDone(); return }
+
+  if (p1Box) p1Box.style.display = "none"
+  if (p2Box) p2Box.style.display = "none"
+  if (hitBox) hitBox.style.display = "block"
+  wrap.style.display = "flex"
+
+  let count = 0
+  const interval = setInterval(() => {
+    if (el) el.innerText = rollD10()
+    count++
+    if (count >= 15) {
+      clearInterval(interval)
+      if (el) el.innerText = roll
+      setTimeout(() => {
+        wrap.style.display = "none"
+        if (p1Box) p1Box.style.display = "block"
+        if (p2Box) p2Box.style.display = "block"
+        if (hitBox) hitBox.style.display = "none"
+        onDone()
+      }, 1000)
+    }
+  }, 60)
+}
+
+// ── 선공 판정 (p1만 실행)
+async function initTurn(data) {
+  if (gameStarted) return
+  gameStarted = true
+
+  const p1Pokemon = data.p1_entry[0]
+  const p2Pokemon = data.p2_entry[0]
+  const p1Roll = rollD10()
+  const p2Roll = rollD10()
+  const p1Total = (p1Pokemon.speed ?? 3) + p1Roll
+  const p2Total = (p2Pokemon.speed ?? 3) + p2Roll
+  const firstSlot = p1Total >= p2Total ? "p1" : "p2"
+
+  animateDualDice(p1Roll, p2Roll, async () => {
+    await updateDoc(roomRef, {
+      first_slot: firstSlot,
+      current_turn: firstSlot,
+      turn_count: 1,
+      p1_dice: p1Roll,
+      p2_dice: p2Roll,
+      battle_log: [
+        "--- 선공 판정 ---",
+        `${data.player1_name} 스피드 ${p1Pokemon.speed ?? 3} + 주사위 ${p1Roll} = ${p1Total}`,
+        `${data.player2_name} 스피드 ${p2Pokemon.speed ?? 3} + 주사위 ${p2Roll} = ${p2Total}`,
+        `${firstSlot === "p1" ? data.player1_name : data.player2_name} 선공!`
+      ]
+    })
+  })
+}
+
+// ── 게임 종료 처리
+async function handleGameOver(winner, loser, currentLog) {
+  if (gameOver) return
+  gameOver = true
+
+  const newLog = [
+    ...currentLog,
+    `══════════════`,
+    `${winner}의 승리! ${loser}의 패배!`,
+    `══════════════`
+  ]
+
+  await updateDoc(roomRef, {
+    game_over: true,
+    winner: winner,
+    current_turn: null,
+    battle_log: newLog
+  })
+}
+
+// ── 실시간 리스닝
+function listenRoom() {
+  onSnapshot(roomRef, async (snap) => {
+    const data = snap.data()
+    if (!data) return
+
+    document.getElementById("p1-name").innerText = data.player1_name ?? "대기..."
+    document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
+
+    syncLog(data.battle_log ?? [])
+
+    if (!data.p1_entry || !data.p2_entry) return
+
+    const enemySlot = mySlot === "p1" ? "p2" : "p1"
+    updateActiveUI(mySlot, data, "my")
+    updateActiveUI(enemySlot, data, "enemy")
+
+    // 게임 종료 상태
+    if (data.game_over) {
+      showGameOver(data)
+      return
+    }
+
+    if (!data.current_turn) {
+      if (mySlot === "p1") {
+        initTurn(data)
+      } else {
+        if (!gameStarted) {
+          gameStarted = true
+          setTimeout(async () => {
+            const s = await getDoc(roomRef)
+            const d = s.data()
+            if (d.p1_dice && d.p2_dice) {
+              animateDualDice(d.p1_dice, d.p2_dice, () => {})
+            }
+          }, 1000)
+        }
+      }
+      return
+    }
+
+    myTurn = data.current_turn === mySlot
+    actionDone = false
+
+    updateTurnUI(data)
+    updateBenchButtons(data)
+    updateMoveButtons(data)
+  })
+}
+
+// ── 게임 종료 UI
+function showGameOver(data) {
+  const turnDisplay = document.getElementById("turn-display")
+  const myName = mySlot === "p1" ? data.player1_name : data.player2_name
+  const isWinner = data.winner === myName
+
+  if (turnDisplay) {
+    turnDisplay.innerText = isWinner ? "🏆 승리!" : "💀 패배..."
+    turnDisplay.style.color = isWinner ? "gold" : "red"
   }
 
-  // 빈 슬롯에 입장
-  if (!room.player1_uid) {
-    await updateDoc(roomRef, { player1_uid: myUid, player1_name: nickname })
-    mySlot = "player1"
-  } else if (!room.player2_uid) {
-    await updateDoc(roomRef, { player2_uid: myUid, player2_name: nickname })
-    mySlot = "player2"
+  // 모든 버튼 비활성화
+  for (let i = 0; i < 4; i++) {
+    const btn = document.getElementById(`move-btn-${i}`)
+    if (btn) { btn.disabled = true; btn.onclick = null }
+  }
+  const benchContainer = document.getElementById("bench-container")
+  if (benchContainer) benchContainer.innerHTML = ""
+
+  // leave 버튼 표시
+  const leaveBtn = document.getElementById("leaveBtn")
+  if (leaveBtn) {
+    leaveBtn.style.display = "inline-block"
+    leaveBtn.disabled = false
+    leaveBtn.innerText = "방 나가기"
+    leaveBtn.onclick = () => leaveGame()
   }
 }
 
-function listenRoom() {
-  onSnapshot(roomRef, async (snap) => {
-    const room = snap.data()
+// ── 게임 종료 후 방 나가기
+async function leaveGame() {
+  const snap = await getDoc(roomRef)
+  const data = snap.data()
 
-    document.getElementById("player1").innerText = "Player1: " + (room.player1_name ?? "대기...")
-    document.getElementById("player2").innerText = "Player2: " + (room.player2_name ?? "대기...")
+  // 방 초기화
+  await updateDoc(roomRef, {
+    player1_uid: null, player1_name: null, player1_ready: false,
+    player2_uid: null, player2_name: null, player2_ready: false,
+    game_started: false, game_over: false, winner: null,
+    current_turn: null, turn_count: 0,
+    p1_entry: null, p2_entry: null,
+    p1_active_idx: 0, p2_active_idx: 0,
+    battle_log: []
+  })
 
-    // leave 버튼: 게임 중이면 비활성화
-    const leaveBtn = document.getElementById("leaveBtn")
-    if (leaveBtn) leaveBtn.disabled = !!room.game_started
+  location.href = "../main.html"
+}
 
-    if (room.player1_ready && room.player2_ready && !room.game_started) {
-      const firestoreSlot = mySlot === "player1" ? "p1" : "p2"
-      const userSnap = await getDoc(doc(db, "users", myUid))
-      const myEntry = userSnap.data()?.entry ?? []
-      const myEntryWithMax = myEntry.map(pkmn => ({ ...pkmn, maxHp: pkmn.hp }))
+// ── 로그 동기화
+function syncLog(logs) {
+  const log = document.getElementById("battle-log")
+  if (!log) return
+  if (logs.length <= renderedLogCount) return
 
-      await updateDoc(roomRef, {
-        [`${firestoreSlot}_entry`]: myEntryWithMax,
-        [`${firestoreSlot}_active_idx`]: 0,
-      })
+  for (let i = renderedLogCount; i < logs.length; i++) {
+    const line = document.createElement("p")
+    line.innerText = logs[i]
+    log.appendChild(line)
+  }
+  renderedLogCount = logs.length
+  log.scrollTop = log.scrollHeight
+}
 
-      if (mySlot === "player1") {
-        await updateDoc(roomRef, { game_started: true })
+// ── 현재 싸우는 포켓몬 UI
+function updateActiveUI(slot, data, prefix) {
+  const activeIdx = data[`${slot}_active_idx`]
+  const pokemon = data[`${slot}_entry`][activeIdx]
+  if (!pokemon) return
+
+  document.getElementById(`${prefix}-active-name`).innerText = pokemon.name
+  document.getElementById(`${prefix}-active-hp`).innerText =
+    `HP: ${pokemon.hp} / ${pokemon.maxHp}`
+}
+
+// ── 기술 버튼 (2x2)
+function updateMoveButtons(data) {
+  const myActiveIdx = data[`${mySlot}_active_idx`]
+  const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
+  const fainted = !myPokemon || myPokemon.hp <= 0
+  const movesArr = myPokemon?.moves ?? []
+
+  for (let i = 0; i < 4; i++) {
+    const btn = document.getElementById(`move-btn-${i}`)
+    if (!btn) continue
+
+    if (i >= movesArr.length) {
+      btn.innerText = "-"
+      btn.disabled = true
+      btn.onclick = null
+      continue
+    }
+
+    const move = movesArr[i]
+    btn.innerText = `${move.name}\nPP: ${move.pp}`
+
+    if (fainted || move.pp <= 0 || !myTurn || actionDone) {
+      btn.disabled = true
+      btn.onclick = null
+    } else {
+      btn.disabled = false
+      btn.onclick = () => useMove(i, data)
+    }
+  }
+}
+
+// ── 교체 버튼
+function updateBenchButtons(data) {
+  const benchContainer = document.getElementById("bench-container")
+  benchContainer.innerHTML = ""
+
+  const myEntry = data[`${mySlot}_entry`]
+  const activeIdx = data[`${mySlot}_active_idx`]
+
+  myEntry.forEach((pkmn, idx) => {
+    if (idx === activeIdx) return
+    const btn = document.createElement("button")
+    if (pkmn.hp <= 0) {
+      btn.innerText = `${pkmn.name} (기절)`
+      btn.disabled = true
+    } else {
+      btn.innerText = `${pkmn.name} (HP: ${pkmn.hp} / ${pkmn.maxHp})`
+      btn.disabled = !myTurn || actionDone
+      btn.onclick = () => switchPokemon(idx)
+    }
+    benchContainer.appendChild(btn)
+  })
+}
+
+// ── 기술 사용
+async function useMove(moveIdx, data) {
+  if (!myTurn || actionDone || gameOver) return
+  actionDone = true
+  updateMoveButtons(data)
+
+  const snap = await getDoc(roomRef)
+  const freshData = snap.data()
+  const enemySlot = mySlot === "p1" ? "p2" : "p1"
+
+  const myActiveIdx  = freshData[`${mySlot}_active_idx`]
+  const eneActiveIdx = freshData[`${enemySlot}_active_idx`]
+
+  const myEntry    = freshData[`${mySlot}_entry`].map(p => ({ ...p, moves: (p.moves ?? []).map(m => ({ ...m })) }))
+  const enemyEntry = freshData[`${enemySlot}_entry`].map(p => ({ ...p }))
+
+  const myPokemon  = myEntry[myActiveIdx]
+  const enePokemon = enemyEntry[eneActiveIdx]
+
+  if (myPokemon.hp <= 0) { actionDone = false; return }
+
+  const moveData = myPokemon.moves[moveIdx]
+  if (!moveData || moveData.pp <= 0) { actionDone = false; return }
+
+  // PP 차감
+  myPokemon.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
+
+  // 명중 판정
+  const hitRoll = rollD10()
+  const hitValue = (myPokemon.speed ?? 3) + hitRoll
+  const defValue = (enePokemon.speed ?? 3) + 3
+  const isHit = hitValue > defValue
+
+  animateHitDice(hitRoll, async () => {
+    const currentLog = freshData.battle_log ?? []
+    const newLines = []
+
+    newLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
+    newLines.push(`명중: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue} → ${isHit ? "명중!" : "빗나감!"}`)
+
+    if (!isHit) {
+      newLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
+    } else {
+      const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
+
+      if (multiplier === 0) {
+        newLines.push(`${enePokemon.name}에게는 효과가 없다...`)
+      } else {
+        if (multiplier === 1.8) newLines.push("효과가 굉장했다!")
+        if (multiplier === 0.8) newLines.push("효과가 별로인 것 같다...")
+        if (stab) newLines.push("자속보정!")
+        newLines.push(`주사위 ${dice} → ${enePokemon.name}에게 ${damage} 데미지`)
+        enePokemon.hp = Math.max(0, enePokemon.hp - damage)
+        newLines.push(`${enePokemon.name} HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
+        if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
       }
     }
 
-    if (room.game_started) {
-      const roomNumber = ROOM_ID.replace("battleroom", "")
-      location.href = `../games/battleroom${roomNumber}.html`
+    const updatedLog = [...currentLog, ...newLines]
+
+    // 승패 체크
+    const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
+    const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
+
+    if (isAllFainted(enemyEntry)) {
+      await updateDoc(roomRef, {
+        [`${mySlot}_entry`]:    myEntry,
+        [`${enemySlot}_entry`]: enemyEntry,
+        turn_count: (freshData.turn_count ?? 1) + 1,
+        game_over: true,
+        winner: myName,
+        current_turn: null,
+        battle_log: [...updatedLog, "══════════════", `${myName}의 승리! ${enemyName}의 패배!`, "══════════════"]
+      })
+    } else if (isAllFainted(myEntry)) {
+      await updateDoc(roomRef, {
+        [`${mySlot}_entry`]:    myEntry,
+        [`${enemySlot}_entry`]: enemyEntry,
+        turn_count: (freshData.turn_count ?? 1) + 1,
+        game_over: true,
+        winner: enemyName,
+        current_turn: null,
+        battle_log: [...updatedLog, "══════════════", `${enemyName}의 승리! ${myName}의 패배!`, "══════════════"]
+      })
+    } else {
+      await updateDoc(roomRef, {
+        [`${mySlot}_entry`]:    myEntry,
+        [`${enemySlot}_entry`]: enemyEntry,
+        current_turn: enemySlot,
+        turn_count: (freshData.turn_count ?? 1) + 1,
+        battle_log: updatedLog
+      })
     }
   })
 }
 
-function setupButtons() {
-  document.getElementById("readyBtn").onclick = async () => {
-    if (mySlot === "player1") await updateDoc(roomRef, { player1_ready: true })
-    if (mySlot === "player2") await updateDoc(roomRef, { player2_ready: true })
-  }
+// ── 교체 (후공)
+async function switchPokemon(newIdx) {
+  if (!myTurn || actionDone || gameOver) return
+  actionDone = true
 
-  document.getElementById("leaveBtn").onclick = async () => {
-    const roomSnap = await getDoc(roomRef)
-    const room = roomSnap.data()
-    if (room.game_started) {
-      alert("도망칠 수 없다!")
-      return
-    }
-    await leaveRoom()
-  }
+  const snap = await getDoc(roomRef)
+  const data = snap.data()
+  const enemySlot = mySlot === "p1" ? "p2" : "p1"
+  const myEntry = data[`${mySlot}_entry`]
+  const prevName = myEntry[data[`${mySlot}_active_idx`]].name
+  const nextName = myEntry[newIdx].name
+  const currentLog = data.battle_log ?? []
+
+  await updateDoc(roomRef, {
+    [`${mySlot}_active_idx`]: newIdx,
+    current_turn: enemySlot,
+    turn_count: (data.turn_count ?? 1) + 1,
+    battle_log: [...currentLog, `${prevName} 교체! ${nextName} 등장!`]
+  })
 }
 
-async function leaveRoom() {
-  if (mySlot === "player1") {
-    await updateDoc(roomRef, { player1_uid: null, player1_name: null, player1_ready: false })
+// ── 턴 UI
+function updateTurnUI(data) {
+  const el = document.getElementById("turn-display")
+  if (el) {
+    el.innerText = myTurn ? "내 턴!" : "상대 턴..."
+    el.style.color = myTurn ? "green" : "gray"
   }
-  if (mySlot === "player2") {
-    await updateDoc(roomRef, { player2_uid: null, player2_name: null, player2_ready: false })
-  }
-  location.href = "../main.html"
+  const tc = document.getElementById("turn-count")
+  if (tc) tc.innerText = `${data.turn_count ?? 1}턴`
 }
