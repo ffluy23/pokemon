@@ -98,7 +98,6 @@ function listenRoom() {
     updateActiveUI(mySlot, data, "my")
     updateActiveUI(enemySlot, data, "enemy")
 
-    // 게임 시작 선공 판정
     if (!data.current_turn) {
       if (mySlot === "p1") {
         initTurn(data)
@@ -127,7 +126,7 @@ function listenRoom() {
 
     updateTurnUI(data)
     updateBenchButtons(data)
-    updateMoveButtons(data)  // 기술 버튼 업데이트
+    updateMoveButtons(data)
   })
 }
 
@@ -142,35 +141,37 @@ function updateActiveUI(slot, data, prefix) {
     `HP: ${pokemon.hp} / ${pokemon.maxHp}`
 }
 
-// ── 기술 버튼 4개 (2x2 그리드)
-// moves는 map: { "전광석화": 15, "화염방사": 10, ... }
+// ── 기술 버튼 (2x2 그리드)
+// moves: [{ name: "전광석화", pp: 15 }, ...]
 function updateMoveButtons(data) {
   const myActiveIdx = data[`${mySlot}_active_idx`]
   const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
-  if (!myPokemon || !myPokemon.moves) return
 
-  // moves가 map이므로 Object.entries로 [기술명, PP] 쌍 추출
-  const moveEntries = Object.entries(myPokemon.moves)
+  // HP 0이면 기술 버튼 전부 비활성화
+  const fainted = !myPokemon || myPokemon.hp <= 0
+  const moves = myPokemon?.moves ?? []
 
   for (let i = 0; i < 4; i++) {
     const btn = document.getElementById(`move-btn-${i}`)
     if (!btn) continue
 
-    if (i >= moveEntries.length) {
+    if (i >= moves.length) {
       btn.innerText = "-"
       btn.disabled = true
+      btn.onclick = null
       continue
     }
 
-    const [moveName, pp] = moveEntries[i]
-    btn.innerText = `${moveName}\nPP: ${pp}`
+    const move = moves[i]  // { name, pp } 순서 고정
+    btn.innerText = `${move.name}\nPP: ${move.pp}`
 
-    // PP 0이거나 내 턴 아니거나 이미 행동했으면 비활성화
-    if (pp <= 0 || !myTurn || actionDone) {
+    // 비활성화 조건: HP 0 / PP 0 / 내 턴 아님 / 이미 행동함
+    if (fainted || move.pp <= 0 || !myTurn || actionDone) {
       btn.disabled = true
+      btn.onclick = null
     } else {
       btn.disabled = false
-      btn.onclick = () => useMove(moveName, data)
+      btn.onclick = () => useMove(i, data)
     }
   }
 }
@@ -202,7 +203,8 @@ function updateBenchButtons(data) {
 }
 
 // ── 기술 사용
-async function useMove(moveName, data) {
+// moveIdx: moves 배열 인덱스 (순서 고정)
+async function useMove(moveIdx, data) {
   if (!myTurn || actionDone) return
   actionDone = true
 
@@ -210,25 +212,35 @@ async function useMove(moveName, data) {
   const freshData = snap.data()
   const enemySlot = mySlot === "p1" ? "p2" : "p1"
 
-  const myActiveIdx = freshData[`${mySlot}_active_idx`]
-  const enemyActiveIdx = freshData[`${enemySlot}_active_idx`]
+  const myActiveIdx  = freshData[`${mySlot}_active_idx`]
+  const eneActiveIdx = freshData[`${enemySlot}_active_idx`]
 
-  const myEntry    = freshData[`${mySlot}_entry`].map(p => ({ ...p }))
+  const myEntry    = freshData[`${mySlot}_entry`].map(p => ({ ...p, moves: [...(p.moves ?? [])] }))
   const enemyEntry = freshData[`${enemySlot}_entry`].map(p => ({ ...p }))
 
   const myPokemon  = myEntry[myActiveIdx]
-  const enePokemon = enemyEntry[enemyActiveIdx]
+  const enePokemon = enemyEntry[eneActiveIdx]
+
+  // HP 0이면 행동 불가
+  if (myPokemon.hp <= 0) {
+    actionDone = false
+    return
+  }
+
+  const move = myPokemon.moves[moveIdx]
+  if (!move || move.pp <= 0) {
+    actionDone = false
+    return
+  }
 
   // PP 차감 (기술 실패해도 차감)
-  if (myPokemon.moves && myPokemon.moves[moveName] > 0) {
-    myPokemon.moves = { ...myPokemon.moves, [moveName]: myPokemon.moves[moveName] - 1 }
-  }
+  myPokemon.moves[moveIdx] = { ...move, pp: move.pp - 1 }
 
   // 임시 고정 데미지 20 (나중에 calcDamage.js 연결)
   const damage = 20
   enePokemon.hp = Math.max(0, enePokemon.hp - damage)
 
-  addLog(`${myPokemon.name}의 ${moveName}! ${enePokemon.name}에게 ${damage} 데미지`)
+  addLog(`${myPokemon.name}의 ${move.name}! ${enePokemon.name}에게 ${damage} 데미지`)
   if (enePokemon.hp <= 0) {
     addLog(`${enePokemon.name}은(는) 쓰러졌다!`)
   }
