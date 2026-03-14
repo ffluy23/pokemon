@@ -29,7 +29,7 @@ onAuthStateChanged(auth, async (user) => {
   if (isSpectator) {
     const turnDisplay = document.getElementById("turn-display")
     if (turnDisplay) {
-      turnDisplay.innerText = "👁 관전 중"
+      turnDisplay.innerText = "관전 중"
       turnDisplay.style.color = "gray"
     }
     const leaveBtn = document.getElementById("leaveBtn")
@@ -58,11 +58,11 @@ function isAllFainted(entry) {
 // ── 명중 판정
 // alwaysHit: 회피율 무시, 무조건 명중
 // 아니면: 최종명중률 = 기술 accuracy - 회피율
-// 회피율 = max(0, min(30, 5 × (상대스피드 - 내스피드)))
+// 회피율 = max(0, min(10, 5 × (상대스피드 - 내스피드)))
 function calcHit(attacker, moveInfo, defender) {
   if (moveInfo.alwaysHit) return { hit: true, log: "반드시 명중!" }
 
-  const evasion = Math.max(0, Math.min(30, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
+  const evasion = Math.max(0, Math.min(10, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
   const finalAccuracy = (moveInfo.accuracy ?? 100) - evasion
   const roll = Math.random() * 100
   const hit = roll < finalAccuracy
