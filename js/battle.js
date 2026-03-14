@@ -55,6 +55,25 @@ function isAllFainted(entry) {
   return entry.every(p => p.hp <= 0)
 }
 
+// ── 명중 판정
+// alwaysHit: 회피율 무시, 무조건 명중
+// 아니면: 최종명중률 = 기술 accuracy - 회피율
+// 회피율 = max(0, min(30, 5 × (상대스피드 - 내스피드)))
+function calcHit(attacker, moveInfo, defender) {
+  if (moveInfo.alwaysHit) return { hit: true, log: "반드시 명중!" }
+
+  const evasion = Math.max(0, Math.min(30, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
+  const finalAccuracy = (moveInfo.accuracy ?? 100) - evasion
+  const roll = Math.random() * 100
+  const hit = roll < finalAccuracy
+
+  const logText = evasion > 0
+    ? `명중률 ${moveInfo.accuracy ?? 100}% - 회피율 ${evasion}% = ${finalAccuracy}% → ${hit ? "명중!" : "빗나감!"}`
+    : `명중률 ${finalAccuracy}% → ${hit ? "명중!" : "빗나감!"}`
+
+  return { hit, log: logText }
+}
+
 // ── 데미지 계산
 function calcDamage(attacker, moveName, defender) {
   const move = moves[moveName]
@@ -71,18 +90,6 @@ function calcDamage(attacker, moveName, defender) {
   const damage = Math.max(0, raw - (defender.defense ?? 3) * 5)
 
   return { damage, multiplier, stab, dice }
-}
-
-// ── 로그 추가
-async function addLog(text) {
-  await addDoc(logsRef, { text, ts: Date.now() })
-}
-
-async function addLogs(lines) {
-  const base = Date.now()
-  for (let i = 0; i < lines.length; i++) {
-    await addDoc(logsRef, { text: lines[i], ts: base + i })
-  }
 }
 
 // ── 타이핑 효과 로그 시스템
@@ -114,6 +121,18 @@ function processQueue() {
   }, 18)
 }
 
+// ── 로그 추가
+async function addLog(text) {
+  await addDoc(logsRef, { text, ts: Date.now() })
+}
+
+async function addLogs(lines) {
+  const base = Date.now()
+  for (let i = 0; i < lines.length; i++) {
+    await addDoc(logsRef, { text: lines[i], ts: base + i })
+  }
+}
+
 // ── 로그 실시간 리스닝
 function listenLogs() {
   const q = query(logsRef, orderBy("ts"))
@@ -127,7 +146,7 @@ function listenLogs() {
   })
 }
 
-// ── 주사위 2개 모션
+// ── 주사위 2개 모션 (선공 판정용)
 function animateDualDice(p1Roll, p2Roll, onDone) {
   const p1El = document.getElementById("dice-p1")
   const p2El = document.getElementById("dice-p2")
@@ -152,38 +171,6 @@ function animateDualDice(p1Roll, p2Roll, onDone) {
       if (p1El) p1El.innerText = p1Roll
       if (p2El) p2El.innerText = p2Roll
       setTimeout(() => { wrap.style.display = "none"; onDone() }, 1500)
-    }
-  }, 60)
-}
-
-// ── 명중 판정 주사위 모션
-function animateHitDice(roll, onDone) {
-  const el = document.getElementById("dice-hit")
-  const wrap = document.getElementById("dice-wrap")
-  const p1Box = document.getElementById("dice-box-p1")
-  const p2Box = document.getElementById("dice-box-p2")
-  const hitBox = document.getElementById("dice-box-hit")
-  if (!wrap) { onDone(); return }
-
-  if (p1Box) p1Box.style.display = "none"
-  if (p2Box) p2Box.style.display = "none"
-  if (hitBox) hitBox.style.display = "block"
-  wrap.style.display = "flex"
-
-  let count = 0
-  const interval = setInterval(() => {
-    if (el) el.innerText = rollD10()
-    count++
-    if (count >= 15) {
-      clearInterval(interval)
-      if (el) el.innerText = roll
-      setTimeout(() => {
-        wrap.style.display = "none"
-        if (p1Box) p1Box.style.display = "block"
-        if (p2Box) p2Box.style.display = "block"
-        if (hitBox) hitBox.style.display = "none"
-        onDone()
-      }, 1000)
     }
   }, 60)
 }
@@ -230,7 +217,7 @@ function listenRoom() {
     const spectEl = document.getElementById("spectator-list")
     if (spectEl) {
       const names = data.spectator_names ?? []
-      spectEl.innerText = names.length > 0 ? "👁 관전: " + names.join(", ") : ""
+      spectEl.innerText = names.length > 0 ? "관전: " + names.join(", ") : ""
     }
 
     if (!data.p1_entry || !data.p2_entry) return
@@ -348,7 +335,7 @@ function updateActiveUI(slot, data, prefix) {
     `HP: ${pokemon.hp} / ${pokemon.maxHp}`
 }
 
-// ── 기술 버튼
+// ── 기술 버튼 (accuracy 표시 추가)
 function updateMoveButtons(data) {
   const myActiveIdx = data[`${mySlot}_active_idx`]
   const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
@@ -367,7 +354,9 @@ function updateMoveButtons(data) {
     }
 
     const move = movesArr[i]
-    btn.innerText = `${move.name}\nPP: ${move.pp}`
+    const moveInfo = moves[move.name]
+    const accText = moveInfo?.alwaysHit ? "필중" : `${moveInfo?.accuracy ?? 100}%`
+    btn.innerText = `${move.name}\nPP: ${move.pp} | ${accText}`
 
     if (isSpectator || fainted || move.pp <= 0 || !myTurn || actionDone) {
       btn.disabled = true
@@ -429,83 +418,61 @@ async function useMove(moveIdx, data) {
   // PP 차감
   myPokemon.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
 
-  // moves.js에서 alwaysHit 여부 확인
   const moveInfo = moves[moveData.name]
-  const alwaysHit = moveInfo?.alwaysHit ?? false
+  const newLines = []
+  newLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
 
   // 명중 판정
-  const hitRoll = rollD10()
-  const hitValue = (myPokemon.speed ?? 3) + hitRoll
-  const defValue = (enePokemon.speed ?? 3) + 3
-  const isHit = alwaysHit || hitValue > defValue
+  const { hit, log: hitLog } = calcHit(myPokemon, moveInfo, enePokemon)
+  newLines.push(hitLog)
 
-  // alwaysHit이면 주사위 모션 없이 바로 처리, 아니면 모션 후 처리
-  const processAttack = async () => {
-    const newLines = []
-    newLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
-
-    if (alwaysHit) {
-      newLines.push("반드시 명중!")
-    } else {
-      newLines.push(`명중: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue} → ${isHit ? "명중!" : "빗나감!"}`)
-    }
-
-    if (!isHit) {
-      newLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
-    } else {
-      const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
-      if (multiplier === 0) {
-        newLines.push(`${enePokemon.name}에게는 효과가 없다...`)
-      } else {
-        if (multiplier === 1.8) newLines.push("효과가 굉장했다!")
-        if (multiplier === 0.8) newLines.push("효과가 별로인 것 같다...")
-        if (stab) newLines.push("자속보정!")
-        newLines.push(`주사위 ${dice} → ${enePokemon.name}에게 ${damage} 데미지`)
-        enePokemon.hp = Math.max(0, enePokemon.hp - damage)
-        newLines.push(`${enePokemon.name} HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
-        if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
-      }
-    }
-
-    const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
-    const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
-
-    if (isAllFainted(enemyEntry)) {
-      newLines.push("══════════════")
-      newLines.push(`${myName}의 승리! ${enemyName}의 패배!`)
-      newLines.push("══════════════")
-      await updateDoc(roomRef, {
-        [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
-        turn_count: (freshData.turn_count ?? 1) + 1,
-        game_over: true, winner: myName, current_turn: null
-      })
-    } else if (isAllFainted(myEntry)) {
-      newLines.push("══════════════")
-      newLines.push(`${enemyName}의 승리! ${myName}의 패배!`)
-      newLines.push("══════════════")
-      await updateDoc(roomRef, {
-        [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
-        turn_count: (freshData.turn_count ?? 1) + 1,
-        game_over: true, winner: enemyName, current_turn: null
-      })
-    } else {
-      await updateDoc(roomRef, {
-        [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
-        current_turn: enemySlot,
-        turn_count: (freshData.turn_count ?? 1) + 1
-      })
-    }
-
-    await addLogs(newLines)
-  }
-
-  if (alwaysHit) {
-    // 주사위 모션 없이 바로 처리
-    await processAttack()
+  if (!hit) {
+    newLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
   } else {
-    // 명중 주사위 모션 후 처리
-    animateHitDice(hitRoll, processAttack)
+    const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
+    if (multiplier === 0) {
+      newLines.push(`${enePokemon.name}에게는 효과가 없다...`)
+    } else {
+      if (multiplier === 1.8) newLines.push("효과가 굉장했다!")
+      if (multiplier === 0.8) newLines.push("효과가 별로인 것 같다...")
+      if (stab) newLines.push("자속보정!")
+      newLines.push(`주사위 ${dice} → ${enePokemon.name}에게 ${damage} 데미지`)
+      enePokemon.hp = Math.max(0, enePokemon.hp - damage)
+      newLines.push(`${enePokemon.name} HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
+      if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
+    }
   }
+
+  const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
+  const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
+
+  if (isAllFainted(enemyEntry)) {
+    newLines.push("══════════════")
+    newLines.push(`${myName}의 승리! ${enemyName}의 패배!`)
+    newLines.push("══════════════")
+    await updateDoc(roomRef, {
+      [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
+      turn_count: (freshData.turn_count ?? 1) + 1,
+      game_over: true, winner: myName, current_turn: null
+    })
+  } else if (isAllFainted(myEntry)) {
+    newLines.push("══════════════")
+    newLines.push(`${enemyName}의 승리! ${myName}의 패배!`)
+    newLines.push("══════════════")
+    await updateDoc(roomRef, {
+      [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
+      turn_count: (freshData.turn_count ?? 1) + 1,
+      game_over: true, winner: enemyName, current_turn: null
+    })
+  } else {
+    await updateDoc(roomRef, {
+      [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
+      current_turn: enemySlot,
+      turn_count: (freshData.turn_count ?? 1) + 1
+    })
+  }
+
+  await addLogs(newLines)
 }
 
 // ── 교체
