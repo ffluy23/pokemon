@@ -1,26 +1,38 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>BattleRoom1</title>
+  <meta charset="UTF-8">
+  <title>BattleRoom1</title>
 </head>
-
 <body>
 
-<h2>Battle Room 1</h2>
+  <h2>Battle Room 1</h2>
 
-<div id="player1">Player1: 대기...</div>
-<div id="player2">Player2: 대기...</div>
+  <!-- 플레이어 -->
+  <div id="player1">Player1: 대기...</div>
+  <div id="player2">Player2: 대기...</div>
 
-<button id="readyBtn">Ready</button>
-<button id="leaveBtn">Leave</button>
+  <hr>
 
-<script>
-const ROOM_ID = "battleroom1"
-</script>
+  <!-- 관전자 목록 -->
+  <div id="spectator-list">관전자 없음</div>
 
-<script type="module" src="../js/firebase.js"></script>
-<script type="module" src="../js/battleroom.js"></script>
+  <hr>
+
+  <!-- 교체 요청 표시 (플레이어에게 뜸) -->
+  <div id="swap-request-display"></div>
+
+  <!-- 버튼 -->
+  <button id="readyBtn">Ready</button>
+  <button id="leaveBtn">Leave</button>
+  <!-- 관전자 전용: 자리 교체 요청 버튼 (기본 숨김) -->
+  <button id="swapBtn" style="display:none;">플레이어 자리 요청</button>
+
+  <script>
+    const ROOM_ID = "battleroom1"
+  </script>
+  <script type="module" src="../js/firebase.js"></script>
+  <script type="module" src="../js/battleroom.js"></script>
 
 </body>
 </html>
