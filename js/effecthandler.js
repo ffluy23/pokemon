@@ -53,7 +53,7 @@ export function processTurnStatus(pokemon) {
       break
 
     case "마비":
-      if (Math.random() < 0.25) {                        // 30% 확률로 행동불능
+      if (Math.random() < 0.3) {                        // 30% 확률로 행동불능
         result.blocked = true
         result.message = `${pokemon.name}은(는) 몸이 저려서 움직일 수 없다!`
       }
