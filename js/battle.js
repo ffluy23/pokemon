@@ -26,7 +26,6 @@ function rollD10() {
 }
 
 // ── 주사위 2개 동시 모션
-// p1Roll, p2Roll: 최종 결과값
 function animateDualDice(p1Roll, p2Roll, onDone) {
   const p1El = document.getElementById("dice-p1")
   const p2El = document.getElementById("dice-p2")
@@ -53,7 +52,7 @@ function animateDualDice(p1Roll, p2Roll, onDone) {
   }, 60)
 }
 
-// ── 선공 판정 (p1만 실행해서 Firestore에 저장)
+// ── 선공 판정 (p1만 실행)
 async function initTurn(data) {
   if (gameStarted) return
   gameStarted = true
@@ -67,7 +66,6 @@ async function initTurn(data) {
   const p2Total = (p2Pokemon.speed ?? 3) + p2Roll
   const firstSlot = p1Total >= p2Total ? "p1" : "p2"
 
-  // 주사위 모션 보여주고 나서 Firestore 저장
   animateDualDice(p1Roll, p2Roll, async () => {
     addLog("--- 선공 판정 ---")
     addLog(`${data.player1_name} 스피드 ${p1Pokemon.speed ?? 3} + 주사위 ${p1Roll} = ${p1Total}`)
@@ -100,14 +98,13 @@ function listenRoom() {
     updateActiveUI(mySlot, data, "my")
     updateActiveUI(enemySlot, data, "enemy")
 
-    // 게임 시작 선공 판정 (p1만 실행)
+    // 게임 시작 선공 판정
     if (!data.current_turn) {
-      if (mySlot === "p1") initTurn(data)
-      // p2는 주사위 모션만 (p1이 저장한 값으로)
-      else {
+      if (mySlot === "p1") {
+        initTurn(data)
+      } else {
         if (!gameStarted) {
           gameStarted = true
-          // p1이 Firestore에 주사위값 저장할 때까지 잠깐 기다렸다가 보여줌
           setTimeout(async () => {
             const s = await getDoc(roomRef)
             const d = s.data()
@@ -130,7 +127,7 @@ function listenRoom() {
 
     updateTurnUI(data)
     updateBenchButtons(data)
-    updateButtonState()
+    updateMoveButtons(data)  // 기술 버튼 업데이트
   })
 }
 
@@ -145,9 +142,40 @@ function updateActiveUI(slot, data, prefix) {
     `HP: ${pokemon.hp} / ${pokemon.maxHp}`
 }
 
+// ── 기술 버튼 4개 (2x2 그리드)
+// moves는 map: { "전광석화": 15, "화염방사": 10, ... }
+function updateMoveButtons(data) {
+  const myActiveIdx = data[`${mySlot}_active_idx`]
+  const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
+  if (!myPokemon || !myPokemon.moves) return
+
+  // moves가 map이므로 Object.entries로 [기술명, PP] 쌍 추출
+  const moveEntries = Object.entries(myPokemon.moves)
+
+  for (let i = 0; i < 4; i++) {
+    const btn = document.getElementById(`move-btn-${i}`)
+    if (!btn) continue
+
+    if (i >= moveEntries.length) {
+      btn.innerText = "-"
+      btn.disabled = true
+      continue
+    }
+
+    const [moveName, pp] = moveEntries[i]
+    btn.innerText = `${moveName}\nPP: ${pp}`
+
+    // PP 0이거나 내 턴 아니거나 이미 행동했으면 비활성화
+    if (pp <= 0 || !myTurn || actionDone) {
+      btn.disabled = true
+    } else {
+      btn.disabled = false
+      btn.onclick = () => useMove(moveName, data)
+    }
+  }
+}
+
 // ── 교체 버튼
-// 기절 포켓몬 → 버튼 비활성화 (사라지지 않음)
-// 체력 있는 포켓몬 → 내 턴일 때만 활성화
 function updateBenchButtons(data) {
   const benchContainer = document.getElementById("bench-container")
   benchContainer.innerHTML = ""
@@ -156,16 +184,14 @@ function updateBenchButtons(data) {
   const activeIdx = data[`${mySlot}_active_idx`]
 
   myEntry.forEach((pkmn, idx) => {
-    if (idx === activeIdx) return  // 현재 싸우는 포켓몬만 숨김
+    if (idx === activeIdx) return
 
     const btn = document.createElement("button")
 
     if (pkmn.hp <= 0) {
-      // 기절: 비활성화 + 기절 표시
       btn.innerText = `${pkmn.name} (기절)`
       btn.disabled = true
     } else {
-      // 살아있음: 내 턴이고 아직 행동 안 했을 때만 활성화
       btn.innerText = `${pkmn.name} (HP: ${pkmn.hp} / ${pkmn.maxHp})`
       btn.disabled = !myTurn || actionDone
       btn.onclick = () => switchPokemon(idx)
@@ -175,55 +201,47 @@ function updateBenchButtons(data) {
   })
 }
 
-// ── 턴 UI
-function updateTurnUI(data) {
-  const el = document.getElementById("turn-display")
-  if (el) {
-    el.innerText = myTurn ? "내 턴!" : "상대 턴..."
-    el.style.color = myTurn ? "green" : "gray"
-  }
-  const tc = document.getElementById("turn-count")
-  if (tc) tc.innerText = `${data.turn_count ?? 1}턴`
-}
-
-// ── 버튼 활성화/비활성화
-function updateButtonState() {
-  const attackBtn = document.getElementById("attackBtn")
-  if (attackBtn) attackBtn.disabled = !myTurn || actionDone
-}
-
-// ── 공격
-async function attack() {
+// ── 기술 사용
+async function useMove(moveName, data) {
   if (!myTurn || actionDone) return
   actionDone = true
-  updateButtonState()
 
   const snap = await getDoc(roomRef)
-  const data = snap.data()
+  const freshData = snap.data()
   const enemySlot = mySlot === "p1" ? "p2" : "p1"
 
-  const myActiveIdx = data[`${mySlot}_active_idx`]
-  const enemyActiveIdx = data[`${enemySlot}_active_idx`]
-  const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
-  const enemyEntry = data[`${enemySlot}_entry`].map(p => ({ ...p }))
+  const myActiveIdx = freshData[`${mySlot}_active_idx`]
+  const enemyActiveIdx = freshData[`${enemySlot}_active_idx`]
+
+  const myEntry    = freshData[`${mySlot}_entry`].map(p => ({ ...p }))
+  const enemyEntry = freshData[`${enemySlot}_entry`].map(p => ({ ...p }))
+
+  const myPokemon  = myEntry[myActiveIdx]
+  const enePokemon = enemyEntry[enemyActiveIdx]
+
+  // PP 차감 (기술 실패해도 차감)
+  if (myPokemon.moves && myPokemon.moves[moveName] > 0) {
+    myPokemon.moves = { ...myPokemon.moves, [moveName]: myPokemon.moves[moveName] - 1 }
+  }
 
   // 임시 고정 데미지 20 (나중에 calcDamage.js 연결)
   const damage = 20
-  enemyEntry[enemyActiveIdx].hp = Math.max(0, enemyEntry[enemyActiveIdx].hp - damage)
+  enePokemon.hp = Math.max(0, enePokemon.hp - damage)
 
-  addLog(`${myPokemon.name}의 공격! ${enemyEntry[enemyActiveIdx].name}에게 ${damage} 데미지`)
-  if (enemyEntry[enemyActiveIdx].hp <= 0) {
-    addLog(`${enemyEntry[enemyActiveIdx].name}은(는) 쓰러졌다!`)
+  addLog(`${myPokemon.name}의 ${moveName}! ${enePokemon.name}에게 ${damage} 데미지`)
+  if (enePokemon.hp <= 0) {
+    addLog(`${enePokemon.name}은(는) 쓰러졌다!`)
   }
 
   await updateDoc(roomRef, {
+    [`${mySlot}_entry`]:    myEntry,
     [`${enemySlot}_entry`]: enemyEntry,
     current_turn: enemySlot,
-    turn_count: (data.turn_count ?? 1) + 1
+    turn_count: (freshData.turn_count ?? 1) + 1
   })
 }
 
-// ── 교체 (후공: 턴 상대에게 넘김)
+// ── 교체 (후공)
 async function switchPokemon(newIdx) {
   if (!myTurn || actionDone) return
   actionDone = true
@@ -242,6 +260,17 @@ async function switchPokemon(newIdx) {
   })
 }
 
+// ── 턴 UI
+function updateTurnUI(data) {
+  const el = document.getElementById("turn-display")
+  if (el) {
+    el.innerText = myTurn ? "내 턴!" : "상대 턴..."
+    el.style.color = myTurn ? "green" : "gray"
+  }
+  const tc = document.getElementById("turn-count")
+  if (tc) tc.innerText = `${data.turn_count ?? 1}턴`
+}
+
 // ── 배틀 로그
 function addLog(msg) {
   const log = document.getElementById("battle-log")
@@ -251,12 +280,3 @@ function addLog(msg) {
   log.appendChild(line)
   log.scrollTop = log.scrollHeight
 }
-
-// ── 공격 버튼 연결
-document.addEventListener("DOMContentLoaded", () => {
-  const attackBtn = document.getElementById("attackBtn")
-  if (attackBtn) {
-    attackBtn.disabled = true
-    attackBtn.onclick = attack
-  }
-})
