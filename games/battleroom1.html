@@ -34,8 +34,6 @@
       font-size: 14px;
       color: gray;
     }
-
-    /* 기술 버튼 2x2 그리드 */
     #move-buttons {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -46,11 +44,10 @@
     #move-buttons button {
       padding: 10px;
       font-size: 13px;
-      white-space: pre-line;  /* \n 줄바꿈 적용 */
+      white-space: pre-line;
       text-align: center;
       line-height: 1.4;
     }
-
     #battle-log {
       width: 100%;
       max-height: 150px;
@@ -70,15 +67,21 @@
 </head>
 <body>
 
-  <!-- 주사위 2개 모션 -->
+  <!-- 주사위 모션 영역 -->
   <div id="dice-wrap">
-    <div class="dice-box">
+    <!-- 선공 판정용 주사위 2개 -->
+    <div class="dice-box" id="dice-box-p1">
       <span id="p1-name-dice">Player1</span>
       <div class="dice-num" id="dice-p1">?</div>
     </div>
-    <div class="dice-box">
+    <div class="dice-box" id="dice-box-p2">
       <span id="p2-name-dice">Player2</span>
       <div class="dice-num" id="dice-p2">?</div>
+    </div>
+    <!-- 명중 판정용 주사위 1개 (평소엔 숨김) -->
+    <div class="dice-box" id="dice-box-hit" style="display:none;">
+      <span>명중 판정</span>
+      <div class="dice-num" id="dice-hit">?</div>
     </div>
   </div>
 
