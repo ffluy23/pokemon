@@ -24,12 +24,20 @@ onAuthStateChanged(auth, async (user) => {
   const room = roomSnap.data()
   mySlot = room.player1_uid === myUid ? "p1" : "p2"
 
-  // 관전자면 UI에 표시
+  // 관전자면 UI에 표시 + leaveBtn 항상 보이게
   if (isSpectator) {
     const turnDisplay = document.getElementById("turn-display")
     if (turnDisplay) {
       turnDisplay.innerText = "👁 관전 중"
       turnDisplay.style.color = "gray"
+    }
+    // 관전자는 언제든지 나갈 수 있게 leaveBtn 즉시 표시
+    const leaveBtn = document.getElementById("leaveBtn")
+    if (leaveBtn) {
+      leaveBtn.style.display = "inline-block"
+      leaveBtn.disabled = false
+      leaveBtn.innerText = "관전 종료"
+      leaveBtn.onclick = () => leaveAsSpectator()
     }
   }
 
@@ -248,7 +256,7 @@ function showGameOver(data) {
   const benchContainer = document.getElementById("bench-container")
   if (benchContainer) benchContainer.innerHTML = ""
 
-  // 관전자는 leave 버튼 없이 그냥 닫으면 됨
+  // 플레이어만 leaveBtn 새로 세팅 (관전자는 이미 위에서 세팅됨)
   if (!isSpectator) {
     const leaveBtn = document.getElementById("leaveBtn")
     if (leaveBtn) {
@@ -258,6 +266,21 @@ function showGameOver(data) {
       leaveBtn.onclick = () => leaveGame()
     }
   }
+}
+
+// ── 관전자 나가기 (방 초기화 없이 그냥 spectators에서 제거)
+async function leaveAsSpectator() {
+  const snap = await getDoc(roomRef)
+  const data = snap.data()
+  const spectators = data.spectators ?? []
+  const spectatorNames = data.spectator_names ?? []
+
+  await updateDoc(roomRef, {
+    spectators: spectators.filter(u => u !== myUid),
+    spectator_names: spectatorNames.filter(n => n !== (data.spectator_names ?? [])[spectators.indexOf(myUid)])
+  })
+
+  location.href = "../main.html"
 }
 
 async function leaveGame() {
