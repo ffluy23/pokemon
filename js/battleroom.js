@@ -7,77 +7,130 @@ let mySlot = null
 let myUid = null
 
 onAuthStateChanged(auth, async (user) => {
-if (!user) return
-myUid = user.uid
-await joinRoom()
-listenRoom()
-setupButtons()
+  if (!user) return
+  myUid = user.uid
+
+  // ── 재접속 체크: users.room 기반으로 게임 중인 방 확인
+  const userSnap = await getDoc(doc(db, "users", myUid))
+  const userData = userSnap.data()
+  const userRoomId = userData?.room ? `battleroom${userData.room}` : null
+
+  if (userRoomId && userRoomId !== ROOM_ID) {
+    // 다른 방에서 게임 중인지 확인
+    const activeRoomSnap = await getDoc(doc(db, "rooms", userRoomId))
+    const activeRoom = activeRoomSnap.data()
+    if (activeRoom?.game_started) {
+      // 게임 중인 방으로 자동 이동
+      location.href = `../games/${userRoomId}.html`
+      return
+    }
+  }
+
+  await joinRoom()
+  listenRoom()
+  setupButtons()
 })
 
 async function joinRoom() {
-const userDoc = await getDoc(doc(db, "users", myUid))
-const nickname = userDoc.data().nickname
-const roomSnap = await getDoc(roomRef)
-const room = roomSnap.data()
-
-if (room.player1_uid === myUid) { mySlot = "player1"; return }
-if (room.player2_uid === myUid) { mySlot = "player2"; return }
-
-if (!room.player1_uid) {
-await updateDoc(roomRef, { player1_uid: myUid, player1_name: nickname })
-mySlot = "player1"
-} else if (!room.player2_uid) {
-await updateDoc(roomRef, { player2_uid: myUid, player2_name: nickname })
-mySlot = "player2"
-}
-}
-
-function listenRoom() {
-onSnapshot(roomRef, async (snap) => {
-const room = snap.data()
-
-document.getElementById("player1").innerText = "Player1: " + (room.player1_name ?? "대기...")
-document.getElementById("player2").innerText = "Player2: " + (room.player2_name ?? "대기...")
-
-if (room.player1_ready && room.player2_ready && !room.game_started) {
-  const firestoreSlot = mySlot === "player1" ? "p1" : "p2"
   const userSnap = await getDoc(doc(db, "users", myUid))
-  const myEntry = userSnap.data()?.entry ?? []
+  const userData = userSnap.data()
+  const nickname = userData.nickname
+  const roomSnap = await getDoc(roomRef)
+  const room = roomSnap.data()
 
-  const myEntryWithMax = myEntry.map(pkmn => ({ ...pkmn, maxHp: pkmn.hp }))
+  // 이미 이 방에 있는 경우
+  if (room.player1_uid === myUid) { mySlot = "player1"; return }
+  if (room.player2_uid === myUid) { mySlot = "player2"; return }
 
-  await updateDoc(roomRef, {
-    [`${firestoreSlot}_entry`]: myEntryWithMax,
-    [`${firestoreSlot}_active_idx`]: 0,
-  })
+  // 게임 중인 방에는 새로 입장 불가
+  if (room.game_started) {
+    alert("이미 게임이 진행 중인 방입니다.")
+    location.href = "../main.html"
+    return
+  }
 
-  if (mySlot === "player1") {
-    await updateDoc(roomRef, { game_started: true })
+  // 다른 방에서 게임 중이면 입장 불가
+  const userRoomId = userData?.room ? `battleroom${userData.room}` : null
+  if (userRoomId && userRoomId !== ROOM_ID) {
+    const otherRoomSnap = await getDoc(doc(db, "rooms", userRoomId))
+    if (otherRoomSnap.data()?.game_started) {
+      alert("이미 다른 방에서 게임 중입니다.")
+      location.href = "../main.html"
+      return
+    }
+  }
+
+  // 빈 슬롯에 입장
+  if (!room.player1_uid) {
+    await updateDoc(roomRef, { player1_uid: myUid, player1_name: nickname })
+    mySlot = "player1"
+  } else if (!room.player2_uid) {
+    await updateDoc(roomRef, { player2_uid: myUid, player2_name: nickname })
+    mySlot = "player2"
   }
 }
 
-if (room.game_started) {
-  const roomNumber = ROOM_ID.replace("battleroom", "")
-  location.href = `../games/battleroom${roomNumber}.html`
-}
+function listenRoom() {
+  onSnapshot(roomRef, async (snap) => {
+    const room = snap.data()
 
-})
+    document.getElementById("player1").innerText = "Player1: " + (room.player1_name ?? "대기...")
+    document.getElementById("player2").innerText = "Player2: " + (room.player2_name ?? "대기...")
+
+    // leave 버튼: 게임 중이면 비활성화
+    const leaveBtn = document.getElementById("leaveBtn")
+    if (leaveBtn) {
+      leaveBtn.disabled = !!room.game_started
+    }
+
+    if (room.player1_ready && room.player2_ready && !room.game_started) {
+      const firestoreSlot = mySlot === "player1" ? "p1" : "p2"
+      const userSnap = await getDoc(doc(db, "users", myUid))
+      const myEntry = userSnap.data()?.entry ?? []
+      const myEntryWithMax = myEntry.map(pkmn => ({ ...pkmn, maxHp: pkmn.hp }))
+
+      await updateDoc(roomRef, {
+        [`${firestoreSlot}_entry`]: myEntryWithMax,
+        [`${firestoreSlot}_active_idx`]: 0,
+      })
+
+      if (mySlot === "player1") {
+        await updateDoc(roomRef, { game_started: true })
+      }
+    }
+
+    if (room.game_started) {
+      const roomNumber = ROOM_ID.replace("battleroom", "")
+      location.href = `../games/battleroom${roomNumber}.html`
+    }
+  })
 }
 
 function setupButtons() {
-document.getElementById("readyBtn").onclick = async () => {
-if (mySlot === "player1") await updateDoc(roomRef, { player1_ready: true })
-if (mySlot === "player2") await updateDoc(roomRef, { player2_ready: true })
-}
-document.getElementById("leaveBtn").onclick = leaveRoom
+  document.getElementById("readyBtn").onclick = async () => {
+    if (mySlot === "player1") await updateDoc(roomRef, { player1_ready: true })
+    if (mySlot === "player2") await updateDoc(roomRef, { player2_ready: true })
+  }
+
+  document.getElementById("leaveBtn").onclick = async () => {
+    const roomSnap = await getDoc(roomRef)
+    const room = roomSnap.data()
+
+    if (room.game_started) {
+      alert("도망칠 수 없다!")
+      return
+    }
+
+    await leaveRoom()
+  }
 }
 
 async function leaveRoom() {
-if (mySlot === "player1") {
-await updateDoc(roomRef, { player1_uid: null, player1_name: null, player1_ready: false })
-}
-if (mySlot === "player2") {
-await updateDoc(roomRef, { player2_uid: null, player2_name: null, player2_ready: false })
-}
-location.href = "../main.html"
+  if (mySlot === "player1") {
+    await updateDoc(roomRef, { player1_uid: null, player1_name: null, player1_ready: false })
+  }
+  if (mySlot === "player2") {
+    await updateDoc(roomRef, { player2_uid: null, player2_name: null, player2_ready: false })
+  }
+  location.href = "../main.html"
 }
