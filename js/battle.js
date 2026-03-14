@@ -1,6 +1,8 @@
 import { auth, db } from "./firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
 import { doc, getDoc, updateDoc, arrayUnion, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+import { moves } from "./moves.js"
+import { getTypeMultiplier } from "./typeChart.js"
 
 const roomRef = doc(db, "rooms", ROOM_ID)
 let mySlot = null
@@ -25,27 +27,42 @@ function rollD10() {
   return Math.floor(Math.random() * 10) + 1
 }
 
-// ── 주사위 모션 (단일)
-function animateSingleDice(elId, result, onDone) {
-  const el = document.getElementById(elId)
-  const wrap = document.getElementById("dice-wrap")
-  if (!el || !wrap) { onDone(); return }
+// ── 데미지 계산
+// 공식: ((40 + attack×4 + 1d10) × 타입상성 × 자속보정) - (defense×5), 최솟값 0
+function calcDamage(attacker, moveName, defender) {
+  const move = moves[moveName]
+  if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0 }
 
-  wrap.style.display = "flex"
-  let count = 0
-  const total = 15
-  const interval = setInterval(() => {
-    el.innerText = Math.floor(Math.random() * 10) + 1
-    count++
-    if (count >= total) {
-      clearInterval(interval)
-      el.innerText = result
-      setTimeout(() => {
-        wrap.style.display = "none"
-        onDone()
-      }, 1000)
-    }
-  }, 60)
+  const dice = rollD10()
+
+  // 타입 상성 (기술 타입 vs 방어 포켓몬 타입)
+  const multiplier = getTypeMultiplier(move.type, defender.type)
+
+  // 무효면 바로 0
+  if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice }
+
+  // 자속보정 (포켓몬 타입 == 기술 타입)
+  const stab = attacker.type === move.type
+  const stabMult = stab ? 1.3 : 1
+
+  const base = 40 + (attacker.attack ?? 3) * 4 + dice
+  const raw = Math.floor(base * multiplier * stabMult)
+  const damage = Math.max(0, raw - (defender.defense ?? 3) * 5)
+
+  return { damage, multiplier, stab, dice }
+}
+
+// ── 자속보정 라벨
+function getStabText(stab) {
+  return stab ? " (자속!)" : ""
+}
+
+// ── 상성 라벨
+function getMultiplierText(multiplier) {
+  if (multiplier === 0)   return "효과가 없다..."
+  if (multiplier === 1.8) return "효과가 굉장했다!"
+  if (multiplier === 0.8) return "효과가 별로인 것 같다..."
+  return ""
 }
 
 // ── 주사위 2개 모션 (선공 판정용)
@@ -53,11 +70,14 @@ function animateDualDice(p1Roll, p2Roll, onDone) {
   const p1El = document.getElementById("dice-p1")
   const p2El = document.getElementById("dice-p2")
   const wrap = document.getElementById("dice-wrap")
+  const p1Box = document.getElementById("dice-box-p1")
+  const p2Box = document.getElementById("dice-box-p2")
+  const hitBox = document.getElementById("dice-box-hit")
   if (!wrap) { onDone(); return }
 
-  // 2개 모두 보이게
-  if (p1El) p1El.parentElement.style.display = "block"
-  if (p2El) p2El.parentElement.style.display = "block"
+  if (p1Box) p1Box.style.display = "block"
+  if (p2Box) p2Box.style.display = "block"
+  if (hitBox) hitBox.style.display = "none"
   wrap.style.display = "flex"
 
   let count = 0
@@ -70,25 +90,20 @@ function animateDualDice(p1Roll, p2Roll, onDone) {
       clearInterval(interval)
       if (p1El) p1El.innerText = p1Roll
       if (p2El) p2El.innerText = p2Roll
-      setTimeout(() => {
-        wrap.style.display = "none"
-        onDone()
-      }, 1500)
+      setTimeout(() => { wrap.style.display = "none"; onDone() }, 1500)
     }
   }, 60)
 }
 
-// ── 명중 판정 다이스 모션 (단일, 명중용)
+// ── 명중 판정 주사위 모션 (단일)
 function animateHitDice(roll, onDone) {
   const el = document.getElementById("dice-hit")
   const wrap = document.getElementById("dice-wrap")
   const p1Box = document.getElementById("dice-box-p1")
   const p2Box = document.getElementById("dice-box-p2")
   const hitBox = document.getElementById("dice-box-hit")
-
   if (!wrap) { onDone(); return }
 
-  // 명중 판정 때는 주사위 1개만
   if (p1Box) p1Box.style.display = "none"
   if (p2Box) p2Box.style.display = "none"
   if (hitBox) hitBox.style.display = "block"
@@ -111,26 +126,6 @@ function animateHitDice(roll, onDone) {
       }, 1000)
     }
   }, 60)
-}
-
-// ── Firestore 로그 추가
-async function addLog(msg) {
-  // 로컬 UI에도 즉시 반영
-  appendLogUI(msg)
-  // Firestore에 저장 (상대방도 볼 수 있게)
-  await updateDoc(roomRef, {
-    battle_log: arrayUnion(msg)
-  })
-}
-
-// ── 로그 UI에 한 줄 추가
-function appendLogUI(msg) {
-  const log = document.getElementById("battle-log")
-  if (!log) return
-  const line = document.createElement("p")
-  line.innerText = msg
-  log.appendChild(line)
-  log.scrollTop = log.scrollHeight
 }
 
 // ── 선공 판정 (p1만 실행)
@@ -175,7 +170,6 @@ function listenRoom() {
     document.getElementById("p1-name").innerText = data.player1_name ?? "대기..."
     document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
 
-    // 로그 동기화 (Firestore 기준으로 전체 다시 렌더)
     renderLog(data.battle_log ?? [])
 
     if (!data.p1_entry || !data.p2_entry) return
@@ -211,14 +205,12 @@ function listenRoom() {
   })
 }
 
-// ── 로그 전체 렌더 (중복 방지)
+// ── 로그 렌더 (새 항목만)
 let lastLogLength = 0
 function renderLog(logs) {
   if (logs.length === lastLogLength) return
   const log = document.getElementById("battle-log")
   if (!log) return
-
-  // 새로 추가된 것만 렌더
   for (let i = lastLogLength; i < logs.length; i++) {
     const line = document.createElement("p")
     line.innerText = logs[i]
@@ -244,20 +236,20 @@ function updateMoveButtons(data) {
   const myActiveIdx = data[`${mySlot}_active_idx`]
   const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
   const fainted = !myPokemon || myPokemon.hp <= 0
-  const moves = myPokemon?.moves ?? []
+  const movesArr = myPokemon?.moves ?? []
 
   for (let i = 0; i < 4; i++) {
     const btn = document.getElementById(`move-btn-${i}`)
     if (!btn) continue
 
-    if (i >= moves.length) {
+    if (i >= movesArr.length) {
       btn.innerText = "-"
       btn.disabled = true
       btn.onclick = null
       continue
     }
 
-    const move = moves[i]
+    const move = movesArr[i]
     btn.innerText = `${move.name}\nPP: ${move.pp}`
 
     if (fainted || move.pp <= 0 || !myTurn || actionDone) {
@@ -280,7 +272,6 @@ function updateBenchButtons(data) {
 
   myEntry.forEach((pkmn, idx) => {
     if (idx === activeIdx) return
-
     const btn = document.createElement("button")
     if (pkmn.hp <= 0) {
       btn.innerText = `${pkmn.name} (기절)`
@@ -294,7 +285,7 @@ function updateBenchButtons(data) {
   })
 }
 
-// ── 기술 사용 (명중 판정 포함)
+// ── 기술 사용
 async function useMove(moveIdx, data) {
   if (!myTurn || actionDone) return
   actionDone = true
@@ -315,32 +306,40 @@ async function useMove(moveIdx, data) {
 
   if (myPokemon.hp <= 0) { actionDone = false; return }
 
-  const move = myPokemon.moves[moveIdx]
-  if (!move || move.pp <= 0) { actionDone = false; return }
+  const moveData = myPokemon.moves[moveIdx]
+  if (!moveData || moveData.pp <= 0) { actionDone = false; return }
 
   // PP 차감
-  myPokemon.moves[moveIdx] = { ...move, pp: move.pp - 1 }
+  myPokemon.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
 
-  // 명중 판정: 공격자 스피드 + 1d10 > 방어자 스피드 + 3
+  // 명중 판정
   const hitRoll = rollD10()
   const hitValue = (myPokemon.speed ?? 3) + hitRoll
   const defValue = (enePokemon.speed ?? 3) + 3
   const isHit = hitValue > defValue
 
-  // 명중 다이스 모션 후 결과 처리
   animateHitDice(hitRoll, async () => {
     const logLines = []
-    logLines.push(`--- ${myPokemon.name}의 ${move.name} ---`)
-    logLines.push(`명중 판정: 스피드 ${myPokemon.speed ?? 3} + 주사위 ${hitRoll} = ${hitValue} vs ${defValue}`)
+    logLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
+    logLines.push(`명중 판정: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue}`)
 
     if (!isHit) {
       logLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
     } else {
-      // 임시 고정 데미지 20 (나중에 calcDamage.js 연결)
-      const damage = 20
-      enePokemon.hp = Math.max(0, enePokemon.hp - damage)
-      logLines.push(`${move.name} 명중! ${enePokemon.name}에게 ${damage} 데미지`)
-      if (enePokemon.hp <= 0) logLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
+      // 데미지 계산
+      const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
+
+      // 무효
+      if (multiplier === 0) {
+        logLines.push(`${enePokemon.name}에게는 효과가 없다...`)
+      } else {
+        logLines.push(`주사위 ${dice} → 데미지 ${damage}${getStabText(stab)}`)
+        const multText = getMultiplierText(multiplier)
+        if (multText) logLines.push(multText)
+        enePokemon.hp = Math.max(0, enePokemon.hp - damage)
+        logLines.push(`${enePokemon.name} 남은 HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
+        if (enePokemon.hp <= 0) logLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
+      }
     }
 
     await updateDoc(roomRef, {
