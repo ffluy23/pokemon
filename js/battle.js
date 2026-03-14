@@ -1,19 +1,21 @@
 import { auth, db } from "./firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
-import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
+import {
+  doc, collection, getDoc, updateDoc, addDoc, onSnapshot, query, orderBy
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 import { moves } from "./moves.js"
 import { getTypeMultiplier } from "./typeChart.js"
 
 const roomRef = doc(db, "rooms", ROOM_ID)
+const logsRef = collection(db, "rooms", ROOM_ID, "logs")  // 서브컬렉션
+
 let mySlot = null
 let myUid = null
 let myTurn = false
 let gameStarted = false
 let actionDone = false
 let gameOver = false
-let renderedLogCount = 0
 
-// URL에 ?spectator=true 붙어있으면 관전자 모드
 const isSpectator = new URLSearchParams(location.search).get("spectator") === "true"
 
 onAuthStateChanged(auth, async (user) => {
@@ -24,14 +26,12 @@ onAuthStateChanged(auth, async (user) => {
   const room = roomSnap.data()
   mySlot = room.player1_uid === myUid ? "p1" : "p2"
 
-  // 관전자면 UI에 표시 + leaveBtn 항상 보이게
   if (isSpectator) {
     const turnDisplay = document.getElementById("turn-display")
     if (turnDisplay) {
       turnDisplay.innerText = "👁 관전 중"
       turnDisplay.style.color = "gray"
     }
-    // 관전자는 언제든지 나갈 수 있게 leaveBtn 즉시 표시
     const leaveBtn = document.getElementById("leaveBtn")
     if (leaveBtn) {
       leaveBtn.style.display = "inline-block"
@@ -42,6 +42,7 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   listenRoom()
+  listenLogs()  // 로그 리스닝 분리
 })
 
 // ── 1d10
@@ -70,6 +71,35 @@ function calcDamage(attacker, moveName, defender) {
   const damage = Math.max(0, raw - (defender.defense ?? 3) * 5)
 
   return { damage, multiplier, stab, dice }
+}
+
+// ── 로그 추가 (서브컬렉션에 저장)
+async function addLog(text) {
+  await addDoc(logsRef, { text, ts: Date.now() })
+}
+
+async function addLogs(lines) {
+  // 순서 보장을 위해 ts에 index 더함
+  const base = Date.now()
+  for (let i = 0; i < lines.length; i++) {
+    await addDoc(logsRef, { text: lines[i], ts: base + i })
+  }
+}
+
+// ── 로그 실시간 리스닝 (서브컬렉션)
+function listenLogs() {
+  const q = query(logsRef, orderBy("ts"))
+  onSnapshot(q, (snap) => {
+    const log = document.getElementById("battle-log")
+    if (!log) return
+    log.innerHTML = ""
+    snap.docs.forEach(d => {
+      const line = document.createElement("p")
+      line.innerText = d.data().text
+      log.appendChild(line)
+    })
+    log.scrollTop = log.scrollHeight
+  })
 }
 
 // ── 주사위 2개 모션
@@ -152,18 +182,18 @@ async function initTurn(data) {
       current_turn: firstSlot,
       turn_count: 1,
       p1_dice: p1Roll,
-      p2_dice: p2Roll,
-      battle_log: [
-        "--- 선공 판정 ---",
-        `${data.player1_name} 스피드 ${p1Pokemon.speed ?? 3} + 주사위 ${p1Roll} = ${p1Total}`,
-        `${data.player2_name} 스피드 ${p2Pokemon.speed ?? 3} + 주사위 ${p2Roll} = ${p2Total}`,
-        `${firstSlot === "p1" ? data.player1_name : data.player2_name} 선공!`
-      ]
+      p2_dice: p2Roll
     })
+    await addLogs([
+      "--- 선공 판정 ---",
+      `${data.player1_name} 스피드 ${p1Pokemon.speed ?? 3} + 주사위 ${p1Roll} = ${p1Total}`,
+      `${data.player2_name} 스피드 ${p2Pokemon.speed ?? 3} + 주사위 ${p2Roll} = ${p2Total}`,
+      `${firstSlot === "p1" ? data.player1_name : data.player2_name} 선공!`
+    ])
   })
 }
 
-// ── 실시간 리스닝
+// ── 실시간 리스닝 (방 상태)
 function listenRoom() {
   onSnapshot(roomRef, async (snap) => {
     const data = snap.data()
@@ -172,14 +202,11 @@ function listenRoom() {
     document.getElementById("p1-name").innerText = data.player1_name ?? "대기..."
     document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
 
-    // 관전자 목록 표시
     const spectEl = document.getElementById("spectator-list")
     if (spectEl) {
       const names = data.spectator_names ?? []
       spectEl.innerText = names.length > 0 ? "👁 관전: " + names.join(", ") : ""
     }
-
-    syncLog(data.battle_log ?? [])
 
     if (!data.p1_entry || !data.p2_entry) return
 
@@ -193,7 +220,6 @@ function listenRoom() {
     }
 
     if (!data.current_turn) {
-      // 관전자는 선공 판정 실행 안 함
       if (!isSpectator && mySlot === "p1") {
         initTurn(data)
       } else if (!isSpectator && mySlot === "p2") {
@@ -205,21 +231,17 @@ function listenRoom() {
             if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
           }, 1000)
         }
-      } else if (isSpectator) {
-        // 관전자는 주사위 모션만 보여줌
-        if (!gameStarted) {
-          gameStarted = true
-          setTimeout(async () => {
-            const s = await getDoc(roomRef)
-            const d = s.data()
-            if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
-          }, 1500)
-        }
+      } else if (isSpectator && !gameStarted) {
+        gameStarted = true
+        setTimeout(async () => {
+          const s = await getDoc(roomRef)
+          const d = s.data()
+          if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
+        }, 1500)
       }
       return
     }
 
-    // 관전자는 턴 판단 없음
     if (!isSpectator) {
       myTurn = data.current_turn === mySlot
       actionDone = false
@@ -248,7 +270,6 @@ function showGameOver(data) {
     }
   }
 
-  // 모든 버튼 비활성화
   for (let i = 0; i < 4; i++) {
     const btn = document.getElementById(`move-btn-${i}`)
     if (btn) { btn.disabled = true; btn.onclick = null }
@@ -256,7 +277,6 @@ function showGameOver(data) {
   const benchContainer = document.getElementById("bench-container")
   if (benchContainer) benchContainer.innerHTML = ""
 
-  // 플레이어만 leaveBtn 새로 세팅 (관전자는 이미 위에서 세팅됨)
   if (!isSpectator) {
     const leaveBtn = document.getElementById("leaveBtn")
     if (leaveBtn) {
@@ -268,21 +288,19 @@ function showGameOver(data) {
   }
 }
 
-// ── 관전자 나가기 (방 초기화 없이 그냥 spectators에서 제거)
+// ── 관전자 나가기
 async function leaveAsSpectator() {
   const snap = await getDoc(roomRef)
   const data = snap.data()
-  const spectators = data.spectators ?? []
-  const spectatorNames = data.spectator_names ?? []
+  const idx = (data.spectators ?? []).indexOf(myUid)
+  const spectators = (data.spectators ?? []).filter(u => u !== myUid)
+  const spectatorNames = (data.spectator_names ?? []).filter((_, i) => i !== idx)
 
-  await updateDoc(roomRef, {
-    spectators: spectators.filter(u => u !== myUid),
-    spectator_names: spectatorNames.filter(n => n !== (data.spectator_names ?? [])[spectators.indexOf(myUid)])
-  })
-
+  await updateDoc(roomRef, { spectators, spectator_names: spectatorNames })
   location.href = "../main.html"
 }
 
+// ── 게임 종료 후 방 나가기
 async function leaveGame() {
   await updateDoc(roomRef, {
     player1_uid: null, player1_name: null, player1_ready: false,
@@ -290,24 +308,9 @@ async function leaveGame() {
     game_started: false, game_over: false, winner: null,
     current_turn: null, turn_count: 0,
     p1_entry: null, p2_entry: null,
-    p1_active_idx: 0, p2_active_idx: 0,
-    battle_log: []
+    p1_active_idx: 0, p2_active_idx: 0
   })
   location.href = "../main.html"
-}
-
-// ── 로그 동기화
-function syncLog(logs) {
-  const log = document.getElementById("battle-log")
-  if (!log) return
-  if (logs.length <= renderedLogCount) return
-  for (let i = renderedLogCount; i < logs.length; i++) {
-    const line = document.createElement("p")
-    line.innerText = logs[i]
-    log.appendChild(line)
-  }
-  renderedLogCount = logs.length
-  log.scrollTop = log.scrollHeight
 }
 
 // ── 포켓몬 UI
@@ -320,7 +323,7 @@ function updateActiveUI(slot, data, prefix) {
     `HP: ${pokemon.hp} / ${pokemon.maxHp}`
 }
 
-// ── 기술 버튼 (관전자면 전부 비활성화)
+// ── 기술 버튼
 function updateMoveButtons(data) {
   const myActiveIdx = data[`${mySlot}_active_idx`]
   const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
@@ -341,7 +344,6 @@ function updateMoveButtons(data) {
     const move = movesArr[i]
     btn.innerText = `${move.name}\nPP: ${move.pp}`
 
-    // 관전자는 무조건 비활성화
     if (isSpectator || fainted || move.pp <= 0 || !myTurn || actionDone) {
       btn.disabled = true
       btn.onclick = null
@@ -352,7 +354,7 @@ function updateMoveButtons(data) {
   }
 }
 
-// ── 교체 버튼 (관전자면 전부 비활성화)
+// ── 교체 버튼
 function updateBenchButtons(data) {
   const benchContainer = document.getElementById("bench-container")
   benchContainer.innerHTML = ""
@@ -368,7 +370,6 @@ function updateBenchButtons(data) {
       btn.disabled = true
     } else {
       btn.innerText = `${pkmn.name} (HP: ${pkmn.hp} / ${pkmn.maxHp})`
-      // 관전자는 비활성화
       btn.disabled = isSpectator || !myTurn || actionDone
       if (!isSpectator) btn.onclick = () => switchPokemon(idx)
     }
@@ -408,9 +409,7 @@ async function useMove(moveIdx, data) {
   const isHit = hitValue > defValue
 
   animateHitDice(hitRoll, async () => {
-    const currentLog = freshData.battle_log ?? []
     const newLines = []
-
     newLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
     newLines.push(`명중: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue} → ${isHit ? "명중!" : "빗나감!"}`)
 
@@ -431,32 +430,36 @@ async function useMove(moveIdx, data) {
       }
     }
 
-    const updatedLog = [...currentLog, ...newLines]
     const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
     const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
 
     if (isAllFainted(enemyEntry)) {
+      newLines.push("══════════════")
+      newLines.push(`${myName}의 승리! ${enemyName}의 패배!`)
+      newLines.push("══════════════")
       await updateDoc(roomRef, {
         [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
         turn_count: (freshData.turn_count ?? 1) + 1,
-        game_over: true, winner: myName, current_turn: null,
-        battle_log: [...updatedLog, "══════════════", `${myName}의 승리! ${enemyName}의 패배!`, "══════════════"]
+        game_over: true, winner: myName, current_turn: null
       })
     } else if (isAllFainted(myEntry)) {
+      newLines.push("══════════════")
+      newLines.push(`${enemyName}의 승리! ${myName}의 패배!`)
+      newLines.push("══════════════")
       await updateDoc(roomRef, {
         [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
         turn_count: (freshData.turn_count ?? 1) + 1,
-        game_over: true, winner: enemyName, current_turn: null,
-        battle_log: [...updatedLog, "══════════════", `${enemyName}의 승리! ${myName}의 패배!`, "══════════════"]
+        game_over: true, winner: enemyName, current_turn: null
       })
     } else {
       await updateDoc(roomRef, {
         [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
         current_turn: enemySlot,
-        turn_count: (freshData.turn_count ?? 1) + 1,
-        battle_log: updatedLog
+        turn_count: (freshData.turn_count ?? 1) + 1
       })
     }
+
+    await addLogs(newLines)
   })
 }
 
@@ -471,14 +474,13 @@ async function switchPokemon(newIdx) {
   const myEntry = data[`${mySlot}_entry`]
   const prevName = myEntry[data[`${mySlot}_active_idx`]].name
   const nextName = myEntry[newIdx].name
-  const currentLog = data.battle_log ?? []
 
   await updateDoc(roomRef, {
     [`${mySlot}_active_idx`]: newIdx,
     current_turn: enemySlot,
-    turn_count: (data.turn_count ?? 1) + 1,
-    battle_log: [...currentLog, `${prevName} 교체! ${nextName} 등장!`]
+    turn_count: (data.turn_count ?? 1) + 1
   })
+  await addLog(`${prevName} 교체! ${nextName} 등장!`)
 }
 
 // ── 턴 UI
