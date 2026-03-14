@@ -10,6 +10,7 @@ let myUid = null
 let myTurn = false
 let gameStarted = false
 let actionDone = false
+let renderedLogCount = 0  // 이미 렌더된 로그 줄 수
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) return
@@ -34,15 +35,12 @@ function calcDamage(attacker, moveName, defender) {
   if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0 }
 
   const dice = rollD10()
-
-  // 타입 상성 (기술 타입 vs 방어 포켓몬 타입)
   const multiplier = getTypeMultiplier(move.type, defender.type)
 
-  // 무효면 바로 0
   if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice }
 
-  // 자속보정 (포켓몬 타입 == 기술 타입)
-  const stab = attacker.type === move.type
+  // 자속보정: 포켓몬 타입 == 기술 타입일 때만
+  const stab = (attacker.type === move.type)
   const stabMult = stab ? 1.3 : 1
 
   const base = 40 + (attacker.attack ?? 3) * 4 + dice
@@ -50,19 +48,6 @@ function calcDamage(attacker, moveName, defender) {
   const damage = Math.max(0, raw - (defender.defense ?? 3) * 5)
 
   return { damage, multiplier, stab, dice }
-}
-
-// ── 자속보정 라벨
-function getStabText(stab) {
-  return stab ? " (자속!)" : ""
-}
-
-// ── 상성 라벨
-function getMultiplierText(multiplier) {
-  if (multiplier === 0)   return "효과가 없다..."
-  if (multiplier === 1.8) return "효과가 굉장했다!"
-  if (multiplier === 0.8) return "효과가 별로인 것 같다..."
-  return ""
 }
 
 // ── 주사위 2개 모션 (선공 판정용)
@@ -81,12 +66,11 @@ function animateDualDice(p1Roll, p2Roll, onDone) {
   wrap.style.display = "flex"
 
   let count = 0
-  const total = 15
   const interval = setInterval(() => {
     if (p1El) p1El.innerText = Math.floor(Math.random() * 10) + 1
     if (p2El) p2El.innerText = Math.floor(Math.random() * 10) + 1
     count++
-    if (count >= total) {
+    if (count >= 15) {
       clearInterval(interval)
       if (p1El) p1El.innerText = p1Roll
       if (p2El) p2El.innerText = p2Roll
@@ -110,11 +94,10 @@ function animateHitDice(roll, onDone) {
   wrap.style.display = "flex"
 
   let count = 0
-  const total = 15
   const interval = setInterval(() => {
     if (el) el.innerText = Math.floor(Math.random() * 10) + 1
     count++
-    if (count >= total) {
+    if (count >= 15) {
       clearInterval(interval)
       if (el) el.innerText = roll
       setTimeout(() => {
@@ -135,7 +118,6 @@ async function initTurn(data) {
 
   const p1Pokemon = data.p1_entry[0]
   const p2Pokemon = data.p2_entry[0]
-
   const p1Roll = rollD10()
   const p2Roll = rollD10()
   const p1Total = (p1Pokemon.speed ?? 3) + p1Roll
@@ -143,20 +125,18 @@ async function initTurn(data) {
   const firstSlot = p1Total >= p2Total ? "p1" : "p2"
 
   animateDualDice(p1Roll, p2Roll, async () => {
-    const logs = [
-      "--- 선공 판정 ---",
-      `${data.player1_name} 스피드 ${p1Pokemon.speed ?? 3} + 주사위 ${p1Roll} = ${p1Total}`,
-      `${data.player2_name} 스피드 ${p2Pokemon.speed ?? 3} + 주사위 ${p2Roll} = ${p2Total}`,
-      `${firstSlot === "p1" ? data.player1_name : data.player2_name} 선공!`
-    ]
-
     await updateDoc(roomRef, {
       first_slot: firstSlot,
       current_turn: firstSlot,
       turn_count: 1,
       p1_dice: p1Roll,
       p2_dice: p2Roll,
-      battle_log: logs
+      battle_log: [
+        "--- 선공 판정 ---",
+        `${data.player1_name} 스피드 ${p1Pokemon.speed ?? 3} + 주사위 ${p1Roll} = ${p1Total}`,
+        `${data.player2_name} 스피드 ${p2Pokemon.speed ?? 3} + 주사위 ${p2Roll} = ${p2Total}`,
+        `${firstSlot === "p1" ? data.player1_name : data.player2_name} 선공!`
+      ]
     })
   })
 }
@@ -170,7 +150,8 @@ function listenRoom() {
     document.getElementById("p1-name").innerText = data.player1_name ?? "대기..."
     document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
 
-    renderLog(data.battle_log ?? [])
+    // 로그 동기화 (새로 추가된 것만)
+    syncLog(data.battle_log ?? [])
 
     if (!data.p1_entry || !data.p2_entry) return
 
@@ -205,18 +186,18 @@ function listenRoom() {
   })
 }
 
-// ── 로그 렌더 (새 항목만)
-let lastLogLength = 0
-function renderLog(logs) {
-  if (logs.length === lastLogLength) return
+// ── 로그 동기화 (새로 추가된 항목만 렌더)
+function syncLog(logs) {
   const log = document.getElementById("battle-log")
   if (!log) return
-  for (let i = lastLogLength; i < logs.length; i++) {
+  if (logs.length <= renderedLogCount) return
+
+  for (let i = renderedLogCount; i < logs.length; i++) {
     const line = document.createElement("p")
     line.innerText = logs[i]
     log.appendChild(line)
   }
-  lastLogLength = logs.length
+  renderedLogCount = logs.length
   log.scrollTop = log.scrollHeight
 }
 
@@ -298,7 +279,7 @@ async function useMove(moveIdx, data) {
   const myActiveIdx  = freshData[`${mySlot}_active_idx`]
   const eneActiveIdx = freshData[`${enemySlot}_active_idx`]
 
-  const myEntry    = freshData[`${mySlot}_entry`].map(p => ({ ...p, moves: [...(p.moves ?? [])] }))
+  const myEntry    = freshData[`${mySlot}_entry`].map(p => ({ ...p, moves: (p.moves ?? []).map(m => ({ ...m })) }))
   const enemyEntry = freshData[`${enemySlot}_entry`].map(p => ({ ...p }))
 
   const myPokemon  = myEntry[myActiveIdx]
@@ -321,23 +302,22 @@ async function useMove(moveIdx, data) {
   animateHitDice(hitRoll, async () => {
     const logLines = []
     logLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
-    logLines.push(`명중 판정: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue}`)
+    logLines.push(`명중: ${myPokemon.speed ?? 3} + ${hitRoll} = ${hitValue} vs ${defValue} → ${isHit ? "명중!" : "빗나감!"}`)
 
     if (!isHit) {
       logLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
     } else {
-      // 데미지 계산
       const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
 
-      // 무효
       if (multiplier === 0) {
         logLines.push(`${enePokemon.name}에게는 효과가 없다...`)
       } else {
-        logLines.push(`주사위 ${dice} → 데미지 ${damage}${getStabText(stab)}`)
-        const multText = getMultiplierText(multiplier)
-        if (multText) logLines.push(multText)
+        if (multiplier === 1.8) logLines.push("효과가 굉장했다!")
+        if (multiplier === 0.8) logLines.push("효과가 별로인 것 같다...")
+        if (stab) logLines.push("자속보정!")
+        logLines.push(`주사위 ${dice} → ${enePokemon.name}에게 ${damage} 데미지`)
         enePokemon.hp = Math.max(0, enePokemon.hp - damage)
-        logLines.push(`${enePokemon.name} 남은 HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
+        logLines.push(`${enePokemon.name} HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
         if (enePokemon.hp <= 0) logLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
       }
     }
