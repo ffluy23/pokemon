@@ -11,16 +11,11 @@
 export const moves = {
   // 노말
   "전광석화":       { power: 40, type: "노말", priority: true,  effect: null },
-  "몸통박치기":     { power: 40, type: "노말", priority: false, effect: { chance: 0.3, volatile: "풀죽음" } },
+  "몸통박치기":     { power: 40, type: "노말", priority: false, effect: null },
   "하이퍼보이스":   { power: 40, type: "노말", priority: false, effect: null },
-  "극대화포":       { power: 40, type: "노말", priority: false, effect: null },
 
   // 불
   "화염방사":       { power: 40, type: "불", priority: false, effect: { chance: 0.1, status: "화상" } },
-  "불꽃엄니":       { power: 40, type: "불", priority: false, effect: { chance: 0.1, status: "화상" } },
-  "열풍":           { power: 40, type: "불", priority: false, effect: { chance: 0.1, status: "화상" } },
-  "불대문자":       { power: 40, type: "불", priority: false, effect: null },
-  "불꽃세례":       { power: 40, type: "불", priority: true,  effect: { chance: 0.1, status: "화상" } },
 
   // 물
   "거품광선":       { power: 40, type: "물", priority: false, effect: null },
@@ -32,30 +27,25 @@ export const moves = {
   // 전기
   "번개펀치":       { power: 40, type: "전기", priority: false, effect: { chance: 0.1, status: "마비" } },
   "10만볼트":       { power: 40, type: "전기", priority: false, effect: { chance: 0.3, status: "마비" } },
-  "방전":           { power: 40, type: "전기", priority: false, effect: { chance: 0.3, volatile: "풀죽음" } },
+  "방전":           { power: 40, type: "전기", priority: false, effect: { chance: 0.3 } },
   "번개":           { power: 40, type: "전기", priority: false, effect: { chance: 0.3, status: "마비" } },
-  "전기쇼크":       { power: 40, type: "전기", priority: true,  effect: { chance: 0.1, status: "마비" } },
+  "전기쇼크":       { power: 0, type: "전기", priority: false,  effect: { chance: 0.1, status: "마비" } },
 
   // 풀
   "에너지볼":       { power: 40, type: "풀", priority: false, effect: null },
   "솔라빔":         { power: 40, type: "풀", priority: false, effect: null },
-  "잎날가르기":     { power: 40, type: "풀", priority: false, effect: null },
-  "씨폭탄":         { power: 40, type: "풀", priority: false, effect: null },
 
   // 얼음
   "눈보라":         { power: 40, type: "얼음", priority: false, effect: { chance: 0.1, status: "얼음" } },
   "냉동빔":         { power: 40, type: "얼음", priority: false, effect: { chance: 0.1, status: "얼음" } },
-  "아이스펀치":     { power: 40, type: "얼음", priority: false, effect: { chance: 0.1, status: "얼음" } },
   "얼음엄니":       { power: 40, type: "얼음", priority: false, effect: { chance: 0.1, status: "얼음" } },
   "아이스해머":     { power: 40, type: "얼음", priority: true,  effect: { chance: 0.1, status: "얼음" } },
 
   // 격투
   "인파이트":       { power: 40, type: "격투", priority: false, effect: null },
   "파동탄":         { power: 40, type: "격투", priority: false, effect: null },
-  "발뒤꿈치떨어뜨리기": { power: 40, type: "격투", priority: false, effect: null },
 
   // 독
-  "독침붕":         { power: 40, type: "독", priority: false, effect: { chance: 0.3, status: "독" } },
   "헤이즈":         { power: 40, type: "독", priority: false, effect: { chance: 0.2, status: "독" } },
 
   // 땅
@@ -81,7 +71,6 @@ export const moves = {
   // 고스트
   "섀도볼":         { power: 40, type: "고스트", priority: false, effect: null },
   "나이트헤드":     { power: 40, type: "고스트", priority: false, effect: null },
-  "섀도스니크":     { power: 40, type: "고스트", priority: true,  effect: null },
 
   // 드래곤
   "드래곤크루":     { power: 40, type: "드래곤", priority: false, effect: null },
@@ -89,7 +78,6 @@ export const moves = {
 
   // 악
   "악의파동":       { power: 40, type: "악", priority: false, effect: { chance: 0.2, volatile: "풀죽음" } },
-  "암타":           { power: 40, type: "악", priority: false, effect: null },
 
   // 강철
   "아이언헤드":     { power: 40, type: "강철", priority: false, effect: { chance: 0.3, volatile: "풀죽음" } },
