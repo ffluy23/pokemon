@@ -72,7 +72,8 @@ function calcHit(attacker, moveInfo, defender, defSpdRank = 0) {
 
   // 2단계: 회피 판정 (스피드 랭크업은 선공 무관, 회피율에만 반영)
   const baseEvasion = Math.max(0, Math.min(10, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
-  const evasion = Math.min(10, baseEvasion + defSpdRank)
+  const spdRankBonus = Math.min(5, Math.max(0, defSpdRank))
+  const evasion = Math.min(15, baseEvasion + spdRankBonus)  // 기본 최대 10% + 랭크업 최대 5% = 15%
   const evasionRoll = Math.random() * 100
   if (evasionRoll < evasion) {
     return { hit: false, hitType: "evaded" }
@@ -563,25 +564,26 @@ async function useMove(moveIdx, data) {
     return
   }
 
-  // ── 현재 유효한 랭크 값 읽기 (0턴이면 만료)
+  // ── 현재 유효한 랭크 값 읽기
   const myRanks  = myPokemon.ranks ?? {}
   const atkRank  = (myRanks.atkTurns ?? 0) > 0 ? (myRanks.atk ?? 0) : 0
-  const defRankEnemy = ((enePokemon.ranks ?? {}).defTurns ?? 0) > 0 ? ((enePokemon.ranks ?? {}).def ?? 0) : 0
   const spdRankEnemy = ((enePokemon.ranks ?? {}).spdTurns ?? 0) > 0 ? ((enePokemon.ranks ?? {}).spd ?? 0) : 0
 
-  // ── 랭크 턴 차감 (내 턴 소모)
+  // 방어 랭크: 상대 방어 랭크를 읽고 → 공격 적중 시 즉시 만료
+  const eneRanks = enePokemon.ranks ?? {}
+  const defRankEnemy = (eneRanks.defTurns ?? 0) > 0 ? (eneRanks.def ?? 0) : 0
+
+  // ── 공격 랭크 차감 (내 턴 소모)
   if (myPokemon.ranks) {
-    if (myPokemon.ranks.atkTurns > 0) myPokemon.ranks.atkTurns--
-    if (myPokemon.ranks.defTurns > 0) myPokemon.ranks.defTurns--
-    if (myPokemon.ranks.spdTurns > 0) myPokemon.ranks.spdTurns--
-    // 만료된 랭크 초기화
-    if (myPokemon.ranks.atkTurns === 0) myPokemon.ranks.atk = 0
-    if (myPokemon.ranks.defTurns === 0) myPokemon.ranks.def = 0
-    if (myPokemon.ranks.spdTurns === 0) myPokemon.ranks.spd = 0
+    if (myPokemon.ranks.atkTurns > 0) { myPokemon.ranks.atkTurns--; if (myPokemon.ranks.atkTurns === 0) myPokemon.ranks.atk = 0 }
+    if (myPokemon.ranks.spdTurns > 0) { myPokemon.ranks.spdTurns--; if (myPokemon.ranks.spdTurns === 0) myPokemon.ranks.spd = 0 }
   }
 
   // 명중 판정 (수비측 스피드 랭크업 회피율 반영)
   const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon, spdRankEnemy)
+
+  // 스피드 랭크 차감 (수비측, 회피 판정 이후 소모)
+  if (enePokemon.ranks?.spdTurns > 0) { enePokemon.ranks.spdTurns--; if (enePokemon.ranks.spdTurns === 0) enePokemon.ranks.spd = 0 }
 
   if (!hit) {
     if (hitType === "evaded") {
@@ -600,6 +602,8 @@ async function useMove(moveIdx, data) {
       // 1배는 추가 출력 없음
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
       if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 쓰러졌다!`)
+      // 방어 랭크: 공격 적중 시 즉시 만료
+      if (enePokemon.ranks?.defTurns > 0) { enePokemon.ranks.defTurns = 0; enePokemon.ranks.def = 0 }
     }
   }
 
@@ -613,7 +617,6 @@ async function useMove(moveIdx, data) {
       game_over: true, winner: myName, current_turn: null
     })
     // 각 클라이언트가 listenRoom → showGameOver에서 지문 표시
-    // 로그에는 중립 메시지만
     newLines.push(`${myName}의 승리!`)
   } else if (isAllFainted(myEntry)) {
     await updateDoc(roomRef, {
