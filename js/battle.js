@@ -57,15 +57,27 @@ function isAllFainted(entry) {
 }
 
 // ── 명중 판정
+// 1단계: 기술 명중률로 발동 판정
+// 2단계: 필중이 아니면 회피율로 회피 판정
+// 회피율 = max(0, min(10, 5 × (상대 스피드 - 내 스피드)))%
 function calcHit(attacker, moveInfo, defender) {
-  if (moveInfo.alwaysHit) return { hit: true, hitType: "alwaysHit" }
+  // 1단계: 기술 명중 판정
+  const accuracyRoll = Math.random() * 100
+  if (accuracyRoll >= (moveInfo.accuracy ?? 100)) {
+    return { hit: false, hitType: "missed" }
+  }
 
+  // 필중 기술은 회피율 무시
+  if (moveInfo.alwaysHit) return { hit: true, hitType: "hit" }
+
+  // 2단계: 회피 판정
   const evasion = Math.max(0, Math.min(10, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
-  const finalAccuracy = (moveInfo.accuracy ?? 100) - evasion
-  const roll = Math.random() * 100
-  const hit = roll < finalAccuracy
+  const evasionRoll = Math.random() * 100
+  if (evasionRoll < evasion) {
+    return { hit: false, hitType: "evaded" }
+  }
 
-  return { hit, hitType: hit ? "hit" : (evasion > 0 ? "evaded" : "missed") }
+  return { hit: true, hitType: "hit" }
 }
 
 // ── 데미지 계산
@@ -83,7 +95,7 @@ function calcDamage(attacker, moveName, defender) {
   const raw = Math.floor(base * multiplier * stabMult)
   const baseDamage = Math.max(0, raw - (defender.defense ?? 3) * 5)
 
-  // 급소 판정: 급소율 = 공격력 × 2% 
+  // 급소 판정: 급소율 = 공격력 × 2% (최대 100%)
   const critChance = Math.min(100, (attacker.attack ?? 3) * 2)
   const critical = Math.random() * 100 < critChance
   const damage = critical ? Math.floor(baseDamage * 1.5) : baseDamage
@@ -122,6 +134,8 @@ function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
 }
 
 // ── 타이핑 효과 로그 시스템
+// 버그 수정: text[i] → [...text][i] 로 문자 단위 처리
+// 공백 문자도 정확히 처리되도록 수정
 let renderedLogIds = new Set()
 let typingQueue = []
 let isTyping = false
@@ -137,7 +151,7 @@ function processQueue() {
   const line = document.createElement("p")
   log.appendChild(line)
 
-  // 문자 배열로 변환
+  // 문자 배열로 변환 (이모지·한글 등 유니코드 안전하게 처리)
   const chars = [...text]
   let i = 0
 
@@ -147,7 +161,7 @@ function processQueue() {
       setTimeout(processQueue, 80)
       return
     }
-    // 공백도 그대로 출력
+    // 공백도 그대로 출력 (innerText += 이면 trailing space가 잘릴 수 있으므로 textContent 사용)
     line.textContent += chars[i]
     i++
     log.scrollTop = log.scrollHeight
@@ -282,7 +296,7 @@ function listenRoom() {
     }
 
     if (!data.current_turn) {
-      // p1: 주사위 굴려서 Firestore에 저장 
+      // p1: 주사위 굴려서 Firestore에 저장 (gameStarted 아직 false일 때만)
       if (!isSpectator && mySlot === "p1" && !gameStarted) {
         initTurn(data)
       }
@@ -534,6 +548,7 @@ async function useMove(moveIdx, data) {
       game_over: true, winner: myName, current_turn: null
     })
     // 각 클라이언트가 listenRoom → showGameOver에서 지문 표시
+    // 로그에는 중립 메시지만
     newLines.push(`${myName}의 승리!`)
   } else if (isAllFainted(myEntry)) {
     await updateDoc(roomRef, {
@@ -571,7 +586,7 @@ async function switchPokemon(newIdx) {
     current_turn: enemySlot,
     turn_count: (data.turn_count ?? 1) + 1
   })
-  // 교체 지문
+  // 포켓몬 스타일 교체 지문
   await addLogs([
     `돌아와, ${prevName}!`,
     `${myName}${josa(myName, "은는")} ${nextName}${josa(nextName, "을를")} 내보냈다!`
