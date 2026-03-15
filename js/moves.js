@@ -17,7 +17,7 @@ export const moves = {
   "할퀴기":       { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
 
   // 불
-  "화염방사":       { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
+  "화염방사":       { power: 50, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
   "불꽃엄니":       { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
   "열풍":           { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
   "불대문자":       { power: 40, type: "불", accuracy: 85,  alwaysHit: false, effect: null },
