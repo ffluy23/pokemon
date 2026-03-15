@@ -65,6 +65,7 @@ export const moves = {
 
   // 바위
   "스톤에지":       { power: 40, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
+  "파워젬":       { power: 40, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
   "록블라스트":     { power: 40, type: "바위", accuracy: 90,  alwaysHit: false, effect: null },
 
   // 비행
