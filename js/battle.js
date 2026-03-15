@@ -238,13 +238,16 @@ async function initTurn(data) {
   const p1Total = (p1Pokemon.speed ?? 3) + p1Roll
   const p2Total = (p2Pokemon.speed ?? 3) + p2Roll
   const firstSlot = p1Total >= p2Total ? "p1" : "p2"
+  const firstPokemon = firstSlot === "p1" ? p1Pokemon : p2Pokemon
 
+  // 주사위값 + first_slot + first_pokemon_name 한 번에 저장
+  // intro_done은 로그 추가 후 p1이 true로 설정 → 중복 실행 방지
   await updateDoc(roomRef, {
     first_slot: firstSlot,
+    first_pokemon_name: firstPokemon.name,
     p1_dice: p1Roll,
     p2_dice: p2Roll
   })
-  // 이후 onSnapshot → diceShown 분기에서 전원이 동시에 애니메이션 재생
 }
 
 // ── 실시간 리스닝
@@ -280,26 +283,26 @@ function listenRoom() {
       if (!isSpectator && mySlot === "p1" && !gameStarted) {
         initTurn(data)
       }
-      // 전원(p1 포함): p1_dice가 Firestore에 생긴 걸 감지하면 동시에 애니메이션 재생
-      if (!diceShown && data.p1_dice && data.p2_dice && data.first_slot) {
+      // 전원(p1 포함): 필요한 값이 모두 있을 때 애니메이션 재생 (diceShown으로 중복 방지)
+      if (!diceShown && data.p1_dice && data.p2_dice && data.first_slot && data.first_pokemon_name) {
         diceShown = true
-        const firstPokemon = data.first_slot === "p1" ? data.p1_entry[0] : data.p2_entry[0]
         animateDualDice(data.p1_dice, data.p2_dice, async () => {
-          // 애니메이션 끝난 후 p1만 current_turn + 로그 설정 (한 번만 실행)
-          if (!isSpectator && mySlot === "p1") {
+          // 애니메이션 끝난 후 p1만 current_turn + 로그 설정
+          // intro_done 필드로 Firestore 레벨에서 중복 실행 완전 차단
+          if (!isSpectator && mySlot === "p1" && !data.intro_done) {
             const p1Name = data.player1_name
             const p2Name = data.player2_name
-            // 로그 먼저 추가 → 그 다음 current_turn 설정 (onSnapshot 재진입 방지)
+            await updateDoc(roomRef, {
+              current_turn: data.first_slot,
+              turn_count: 1,
+              intro_done: true
+            })
             await addLogs([
               `${p1Name}${josa(p1Name, "과와")} ${p2Name}의 승부가 시작됐다!`,
               `${p1Name}${josa(p1Name, "은는")} ${data.p1_entry[0].name}${josa(data.p1_entry[0].name, "을를")} 내보냈다!`,
               `${p2Name}${josa(p2Name, "은는")} ${data.p2_entry[0].name}${josa(data.p2_entry[0].name, "을를")} 내보냈다!`,
-              `${firstPokemon.name}의 선공!`
+              `${data.first_pokemon_name}의 선공!`
             ])
-            await updateDoc(roomRef, {
-              current_turn: data.first_slot,
-              turn_count: 1
-            })
           }
         })
       }
@@ -381,7 +384,9 @@ async function leaveGame() {
     game_started: false, game_over: false, winner: null,
     current_turn: null, turn_count: 0,
     p1_entry: null, p2_entry: null,
-    p1_active_idx: 0, p2_active_idx: 0
+    p1_active_idx: 0, p2_active_idx: 0,
+    p1_dice: null, p2_dice: null,
+    first_slot: null, first_pokemon_name: null, intro_done: false
   })
   location.href = "../main.html"
 }
