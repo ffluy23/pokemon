@@ -90,10 +90,20 @@ function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
   if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0, critical: false }
 
   const dice = rollD10()
-  const multiplier = getTypeMultiplier(move.type, defender.type)
+
+  // 수비측 타입이 배열일 수 있으므로 순회해서 곱함
+  // 4배 약점(1.8×1.8=3.24) → 룰상 3.6으로 처리: 두 타입 모두 약점이면 1.8×2
+  const defTypes = Array.isArray(defender.type) ? defender.type : [defender.type]
+  let multiplier = 1
+  for (const dt of defTypes) {
+    multiplier *= getTypeMultiplier(move.type, dt)
+  }
+  // 두 타입 모두 약점이어도 그냥 1.8×1.8=3.24 그대로 사용
   if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice, critical: false }
 
-  const stab = attacker.type === move.type
+  // 자속보정: 공격 포켓몬 타입도 배열 지원
+  const atkTypes = Array.isArray(attacker.type) ? attacker.type : [attacker.type]
+  const stab = atkTypes.includes(move.type)
   const stabMult = stab ? 1.3 : 1
   const base = (move.power ?? 40) + (attacker.attack ?? 3) * 4 + dice
   const raw = Math.floor(base * multiplier * stabMult)
@@ -569,7 +579,7 @@ async function useMove(moveIdx, data) {
   const atkRank  = (myRanks.atkTurns ?? 0) > 0 ? (myRanks.atk ?? 0) : 0
   const spdRankEnemy = ((enePokemon.ranks ?? {}).spdTurns ?? 0) > 0 ? ((enePokemon.ranks ?? {}).spd ?? 0) : 0
 
-  // 방어 랭크: 상대 방어 랭크를 읽고 → 공격 적중 시 즉시 만료
+  // 방어 랭크: 상대(수비측) 방어 랭크를 읽고 → 공격 적중 시 즉시 만료
   const eneRanks = enePokemon.ranks ?? {}
   const defRankEnemy = (eneRanks.defTurns ?? 0) > 0 ? (eneRanks.def ?? 0) : 0
 
@@ -617,6 +627,7 @@ async function useMove(moveIdx, data) {
       game_over: true, winner: myName, current_turn: null
     })
     // 각 클라이언트가 listenRoom → showGameOver에서 지문 표시
+    // 로그에는 중립 메시지만
     newLines.push(`${myName}의 승리!`)
   } else if (isAllFainted(myEntry)) {
     await updateDoc(roomRef, {
