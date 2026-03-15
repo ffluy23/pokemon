@@ -13,6 +13,7 @@ let mySlot = null
 let myUid = null
 let myTurn = false
 let gameStarted = false
+let diceShown = false
 let actionDone = false
 let gameOver = false
 
@@ -238,26 +239,27 @@ async function initTurn(data) {
   const firstSlot = p1Total >= p2Total ? "p1" : "p2"
   const firstPokemon = firstSlot === "p1" ? p1Pokemon : p2Pokemon
 
+  // 주사위값을 먼저 Firestore에 저장 → p2/관전자가 onSnapshot으로 감지해서 동시에 애니메이션 시작
+  await updateDoc(roomRef, {
+    first_slot: firstSlot,
+    p1_dice: p1Roll,
+    p2_dice: p2Roll
+  })
+
+  // p1도 동시에 애니메이션 재생, 끝나면 current_turn + 로그 설정
   animateDualDice(p1Roll, p2Roll, async () => {
     await updateDoc(roomRef, {
-      first_slot: firstSlot,
       current_turn: firstSlot,
-      turn_count: 1,
-      p1_dice: p1Roll,
-      p2_dice: p2Roll
+      turn_count: 1
     })
 
     const p1Name = data.player1_name
     const p2Name = data.player2_name
     const startLines = []
-
-    // p1(실행자) 기준: 상대(p2)가 승부를 걸어왔다
-    // 로그는 전원 공유이므로 트레이너 배틀 지문으로 통일
     startLines.push(`${p1Name}${josa(p1Name, "과와")} ${p2Name}의 승부가 시작됐다!`)
     startLines.push(`${p1Name}${josa(p1Name, "은는")} ${p1Pokemon.name}${josa(p1Pokemon.name, "을를")} 내보냈다!`)
     startLines.push(`${p2Name}${josa(p2Name, "은는")} ${p2Pokemon.name}${josa(p2Pokemon.name, "을를")} 내보냈다!`)
     startLines.push(`${firstPokemon.name}의 선공!`)
-
     await addLogs(startLines)
   })
 }
@@ -291,12 +293,31 @@ function listenRoom() {
     }
 
     if (!data.current_turn) {
-      if (!isSpectator && mySlot === "p1") {
+      if (!isSpectator && mySlot === "p1" && !gameStarted) {
+        // p1: 주사위 굴려서 Firestore에 저장
         initTurn(data)
-      } else if (!gameStarted && data.p1_dice && data.p2_dice) {
-        // p2 또는 관전자: onSnapshot에서 주사위 값이 생긴 걸 감지하면 그때 애니메이션 재생
-        gameStarted = true
-        animateDualDice(data.p1_dice, data.p2_dice, () => {})
+      }
+      // 전원: p1_dice가 생기면 애니메이션 재생 (p1 포함)
+      if (!diceShown && data.p1_dice && data.p2_dice) {
+        diceShown = true
+        animateDualDice(data.p1_dice, data.p2_dice, async () => {
+          // 애니메이션 끝난 후 p1만 current_turn + 로그 설정
+          if (!isSpectator && mySlot === "p1") {
+            const p1Name = data.player1_name
+            const p2Name = data.player2_name
+            const firstPokemonName = data.first_pokemon_name ?? ""
+            await updateDoc(roomRef, {
+              current_turn: data.first_slot,
+              turn_count: 1
+            })
+            await addLogs([
+              `${p1Name}${josa(p1Name, "과와")} ${p2Name}의 승부가 시작됐다!`,
+              `${p1Name}${josa(p1Name, "은는")} ${data.p1_entry[0].name}${josa(data.p1_entry[0].name, "을를")} 내보냈다!`,
+              `${p2Name}${josa(p2Name, "은는")} ${data.p2_entry[0].name}${josa(data.p2_entry[0].name, "을를")} 내보냈다!`,
+              `${firstPokemonName}의 선공!`
+            ])
+          }
+        })
       }
       return
     }
