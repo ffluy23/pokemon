@@ -56,22 +56,15 @@ function isAllFainted(entry) {
 }
 
 // ── 명중 판정
-// alwaysHit: 회피율 무시, 무조건 명중
-// 아니면: 최종명중률 = 기술 accuracy - 회피율
-// 회피율 = max(0, min(10, 5 × (상대스피드 - 내스피드)))
 function calcHit(attacker, moveInfo, defender) {
-  if (moveInfo.alwaysHit) return { hit: true, log: "반드시 명중!" }
+  if (moveInfo.alwaysHit) return { hit: true, hitType: "alwaysHit" }
 
   const evasion = Math.max(0, Math.min(10, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
   const finalAccuracy = (moveInfo.accuracy ?? 100) - evasion
   const roll = Math.random() * 100
   const hit = roll < finalAccuracy
 
-  const logText = evasion > 0
-    ? `명중률 ${moveInfo.accuracy ?? 100}% - 회피율 ${evasion}% = ${finalAccuracy}% → ${hit ? "명중!" : "빗나감!"}`
-    : `명중률 ${finalAccuracy}% → ${hit ? "명중!" : "빗나감!"}`
-
-  return { hit, log: logText }
+  return { hit, hitType: hit ? "hit" : (evasion > 0 ? "evaded" : "missed") }
 }
 
 // ── 데미지 계산
@@ -92,7 +85,39 @@ function calcDamage(attacker, moveName, defender) {
   return { damage, multiplier, stab, dice }
 }
 
+// ── HP바 업데이트
+// showNumbers: true면 HP 숫자도 표시, false면 바만
+function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
+  const bar = document.getElementById(barId)
+  const text = textId ? document.getElementById(textId) : null
+
+  if (!bar) return
+
+  const pct = maxHp > 0 ? Math.max(0, Math.min(100, (hp / maxHp) * 100)) : 0
+
+  bar.style.width = pct + "%"
+
+  // 체력 비율에 따라 색상 변경
+  if (pct > 50) {
+    bar.style.backgroundColor = "#4caf50" // 초록
+  } else if (pct > 20) {
+    bar.style.backgroundColor = "#ff9800" // 주황
+  } else {
+    bar.style.backgroundColor = "#f44336" // 빨강
+  }
+
+  if (text) {
+    if (showNumbers) {
+      text.innerText = `HP: ${hp} / ${maxHp}`
+    } else {
+      text.innerText = ""
+    }
+  }
+}
+
 // ── 타이핑 효과 로그 시스템
+// 버그 수정: text[i] → [...text][i] 로 문자 단위 처리
+// 공백 문자도 정확히 처리되도록 수정
 let renderedLogIds = new Set()
 let typingQueue = []
 let isTyping = false
@@ -108,17 +133,24 @@ function processQueue() {
   const line = document.createElement("p")
   log.appendChild(line)
 
+  // 문자 배열로 변환 (이모지·한글 등 유니코드 안전하게 처리)
+  const chars = [...text]
   let i = 0
-  const interval = setInterval(() => {
-    line.innerText += text[i]
-    i++
-    log.scrollTop = log.scrollHeight
-    if (i >= text.length) {
-      clearInterval(interval)
+
+  function typeNext() {
+    if (i >= chars.length) {
       isTyping = false
       setTimeout(processQueue, 80)
+      return
     }
-  }, 18)
+    // 공백도 그대로 출력 (innerText += 이면 trailing space가 잘릴 수 있으므로 textContent 사용)
+    line.textContent += chars[i]
+    i++
+    log.scrollTop = log.scrollHeight
+    setTimeout(typeNext, 18)
+  }
+
+  typeNext()
 }
 
 // ── 로그 추가
@@ -144,6 +176,23 @@ function listenLogs() {
     })
     processQueue()
   })
+}
+
+// ── 조사 처리 유틸 (은/는, 이/가, 을/를, 과/와, 으로/로)
+function josa(word, type) {
+  if (!word) return type === "은는" ? "은" : type === "이가" ? "이" : type === "을를" ? "을" : type === "과와" ? "과" : "으로"
+  const code = word.charCodeAt(word.length - 1)
+  if (code < 0xAC00 || code > 0xD7A3) {
+    // 한글 아닌 경우 기본값
+    return type === "은는" ? "은" : type === "이가" ? "이" : type === "을를" ? "을" : type === "과와" ? "과" : "으로"
+  }
+  const hasFinal = (code - 0xAC00) % 28 !== 0 // 받침 있으면 true
+  if (type === "은는") return hasFinal ? "은" : "는"
+  if (type === "이가") return hasFinal ? "이" : "가"
+  if (type === "을를") return hasFinal ? "을" : "를"
+  if (type === "과와") return hasFinal ? "과" : "와"
+  if (type === "으로") return hasFinal ? "으로" : "로"
+  return ""
 }
 
 // ── 주사위 2개 모션 (선공 판정용)
@@ -187,6 +236,7 @@ async function initTurn(data) {
   const p1Total = (p1Pokemon.speed ?? 3) + p1Roll
   const p2Total = (p2Pokemon.speed ?? 3) + p2Roll
   const firstSlot = p1Total >= p2Total ? "p1" : "p2"
+  const firstPokemon = firstSlot === "p1" ? p1Pokemon : p2Pokemon
 
   animateDualDice(p1Roll, p2Roll, async () => {
     await updateDoc(roomRef, {
@@ -196,16 +246,31 @@ async function initTurn(data) {
       p1_dice: p1Roll,
       p2_dice: p2Roll
     })
-    await addLogs([
-      "--- 선공 판정 ---",
-      `${data.player1_name} 스피드 ${p1Pokemon.speed ?? 3} + 주사위 ${p1Roll} = ${p1Total}`,
-      `${data.player2_name} 스피드 ${p2Pokemon.speed ?? 3} + 주사위 ${p2Roll} = ${p2Total}`,
-      `${firstSlot === "p1" ? data.player1_name : data.player2_name} 선공!`
-    ])
+
+    // ── 포켓몬 스타일 배틀 시작 지문 생성
+    const myName    = data.player1_name
+    const enemyName = data.player2_name
+    const startLines = []
+
+    // 배틀 시작
+    // 플레이어 관점: 상대 트레이너 이름이 승부를 걸어옴
+    // 관전자 관점: 두 플레이어의 승부 시작
+    startLines.push(`와일드 ${enemyName}이(가) 나타났다!`) // 임시, listenRoom에서 관전자 분기
+
+    // 포켓몬 출격
+    startLines.push(`${myName}은(는) ${p1Pokemon.name}을(를) 내보냈다!`)
+    startLines.push(`${enemyName}은(는) ${p2Pokemon.name}을(를) 내보냈다!`)
+
+    // 선공 판정
+    startLines.push(`${firstPokemon.name}의 선공!`)
+
+    await addLogs(startLines)
   })
 }
 
 // ── 실시간 리스닝
+let battleIntroLogged = false
+
 function listenRoom() {
   onSnapshot(roomRef, async (snap) => {
     const data = snap.data()
@@ -237,11 +302,18 @@ function listenRoom() {
       } else if (!isSpectator && mySlot === "p2") {
         if (!gameStarted) {
           gameStarted = true
-          setTimeout(async () => {
-            const s = await getDoc(roomRef)
-            const d = s.data()
-            if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
-          }, 1000)
+
+          // p2 입장에서 배틀 시작 지문 (상대가 승부를 걸어옴)
+          if (!battleIntroLogged) {
+            battleIntroLogged = true
+            const enemyName = data.player1_name
+            const myName    = data.player2_name
+            setTimeout(async () => {
+              const s = await getDoc(roomRef)
+              const d = s.data()
+              if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
+            }, 1000)
+          }
         }
       } else if (isSpectator && !gameStarted) {
         gameStarted = true
@@ -268,17 +340,25 @@ function listenRoom() {
 // ── 게임 종료 UI
 function showGameOver(data) {
   const turnDisplay = document.getElementById("turn-display")
+
   if (isSpectator) {
     if (turnDisplay) {
-      turnDisplay.innerText = `🏆 ${data.winner} 승리!`
+      turnDisplay.innerText = `🏆 ${data.winner}의 승리!`
       turnDisplay.style.color = "gold"
     }
   } else {
-    const myName = mySlot === "p1" ? data.player1_name : data.player2_name
-    const isWinner = data.winner === myName
+    const myName    = mySlot === "p1" ? data.player1_name : data.player2_name
+    const enemyName = mySlot === "p1" ? data.player2_name : data.player1_name
+    const isWinner  = data.winner === myName
+
     if (turnDisplay) {
-      turnDisplay.innerText = isWinner ? "🏆 승리!" : "💀 패배..."
-      turnDisplay.style.color = isWinner ? "gold" : "red"
+      if (isWinner) {
+        turnDisplay.innerText = `${enemyName}${josa(enemyName, "과와")}의 전투에서 승리했다!`
+        turnDisplay.style.color = "gold"
+      } else {
+        turnDisplay.innerText = `${enemyName}${josa(enemyName, "과와")}의 전투에서 패배했다…`
+        turnDisplay.style.color = "red"
+      }
     }
   }
 
@@ -325,22 +405,30 @@ async function leaveGame() {
   location.href = "../main.html"
 }
 
-// ── 포켓몬 UI
+// ── 포켓몬 UI (HP바 포함)
 function updateActiveUI(slot, data, prefix) {
   const activeIdx = data[`${slot}_active_idx`]
-  const pokemon = data[`${slot}_entry`][activeIdx]
+  const pokemon   = data[`${slot}_entry`][activeIdx]
   if (!pokemon) return
+
   document.getElementById(`${prefix}-active-name`).innerText = pokemon.name
-  document.getElementById(`${prefix}-active-hp`).innerText =
-    `HP: ${pokemon.hp} / ${pokemon.maxHp}`
+
+  const showNumbers = (prefix === "my") // 내 포켓몬만 숫자 표시
+  updateHpBar(
+    `${prefix}-hp-bar`,
+    `${prefix}-active-hp`,
+    pokemon.hp,
+    pokemon.maxHp,
+    showNumbers
+  )
 }
 
-// ── 기술 버튼 (accuracy 표시 추가)
+// ── 기술 버튼
 function updateMoveButtons(data) {
   const myActiveIdx = data[`${mySlot}_active_idx`]
-  const myPokemon = data[`${mySlot}_entry`][myActiveIdx]
-  const fainted = !myPokemon || myPokemon.hp <= 0
-  const movesArr = myPokemon?.moves ?? []
+  const myPokemon   = data[`${mySlot}_entry`][myActiveIdx]
+  const fainted     = !myPokemon || myPokemon.hp <= 0
+  const movesArr    = myPokemon?.moves ?? []
 
   for (let i = 0; i < 4; i++) {
     const btn = document.getElementById(`move-btn-${i}`)
@@ -348,22 +436,22 @@ function updateMoveButtons(data) {
 
     if (i >= movesArr.length) {
       btn.innerText = "-"
-      btn.disabled = true
-      btn.onclick = null
+      btn.disabled  = true
+      btn.onclick   = null
       continue
     }
 
-    const move = movesArr[i]
+    const move     = movesArr[i]
     const moveInfo = moves[move.name]
-    const accText = moveInfo?.alwaysHit ? "필중" : `${moveInfo?.accuracy ?? 100}%`
-    btn.innerText = `${move.name}\nPP: ${move.pp} | ${accText}`
+    const accText  = moveInfo?.alwaysHit ? "필중" : `${moveInfo?.accuracy ?? 100}%`
+    btn.innerText  = `${move.name}\nPP: ${move.pp} | ${accText}`
 
     if (isSpectator || fainted || move.pp <= 0 || !myTurn || actionDone) {
       btn.disabled = true
-      btn.onclick = null
+      btn.onclick  = null
     } else {
       btn.disabled = false
-      btn.onclick = () => useMove(i, data)
+      btn.onclick  = () => useMove(i, data)
     }
   }
 }
@@ -373,7 +461,7 @@ function updateBenchButtons(data) {
   const benchContainer = document.getElementById("bench-container")
   benchContainer.innerHTML = ""
 
-  const myEntry = data[`${mySlot}_entry`]
+  const myEntry  = data[`${mySlot}_entry`]
   const activeIdx = data[`${mySlot}_active_idx`]
 
   myEntry.forEach((pkmn, idx) => {
@@ -381,10 +469,10 @@ function updateBenchButtons(data) {
     const btn = document.createElement("button")
     if (pkmn.hp <= 0) {
       btn.innerText = `${pkmn.name} (기절)`
-      btn.disabled = true
+      btn.disabled  = true
     } else {
       btn.innerText = `${pkmn.name} (HP: ${pkmn.hp} / ${pkmn.maxHp})`
-      btn.disabled = isSpectator || !myTurn || actionDone
+      btn.disabled  = isSpectator || !myTurn || actionDone
       if (!isSpectator) btn.onclick = () => switchPokemon(idx)
     }
     benchContainer.appendChild(btn)
@@ -397,7 +485,7 @@ async function useMove(moveIdx, data) {
   actionDone = true
   updateMoveButtons(data)
 
-  const snap = await getDoc(roomRef)
+  const snap      = await getDoc(roomRef)
   const freshData = snap.data()
   const enemySlot = mySlot === "p1" ? "p2" : "p1"
 
@@ -420,25 +508,28 @@ async function useMove(moveIdx, data) {
 
   const moveInfo = moves[moveData.name]
   const newLines = []
-  newLines.push(`--- ${myPokemon.name}의 ${moveData.name} ---`)
+
+  // 공격 지문
+  newLines.push(`${myPokemon.name}의 ${moveData.name}!`)
 
   // 명중 판정
-  const { hit, log: hitLog } = calcHit(myPokemon, moveInfo, enePokemon)
-  newLines.push(hitLog)
+  const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon)
 
   if (!hit) {
-    newLines.push(`${myPokemon.name}의 공격이 빗나갔다!`)
+    if (hitType === "evaded") {
+      newLines.push(`${enePokemon.name}에게는 맞지 않았다!`)
+    } else {
+      newLines.push(`그러나 ${myPokemon.name}의 공격은 빗나갔다!`)
+    }
   } else {
     const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
     if (multiplier === 0) {
-      newLines.push(`${enePokemon.name}에게는 효과가 없다...`)
+      newLines.push(`${enePokemon.name}에게는 효과가 없다…`)
     } else {
-      if (multiplier === 1.8) newLines.push("효과가 굉장했다!")
-      if (multiplier === 0.8) newLines.push("효과가 별로인 것 같다...")
-      if (stab) newLines.push("자속보정!")
-      newLines.push(`주사위 ${dice} → ${enePokemon.name}에게 ${damage} 데미지`)
+      if (multiplier > 1) newLines.push("효과가 굉장했다!")
+      if (multiplier < 1) newLines.push("효과가 별로인 듯하다…")
+      // 1배는 추가 출력 없음
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
-      newLines.push(`${enePokemon.name} HP: ${enePokemon.hp} / ${enePokemon.maxHp}`)
       if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
     }
   }
@@ -447,23 +538,21 @@ async function useMove(moveIdx, data) {
   const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
 
   if (isAllFainted(enemyEntry)) {
-    newLines.push("══════════════")
-    newLines.push(`${myName}의 승리! ${enemyName}의 패배!`)
-    newLines.push("══════════════")
     await updateDoc(roomRef, {
       [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
       turn_count: (freshData.turn_count ?? 1) + 1,
       game_over: true, winner: myName, current_turn: null
     })
+    // 각 클라이언트가 listenRoom → showGameOver에서 지문 표시
+    // 로그에는 중립 메시지만
+    newLines.push(`${myName}의 승리!`)
   } else if (isAllFainted(myEntry)) {
-    newLines.push("══════════════")
-    newLines.push(`${enemyName}의 승리! ${myName}의 패배!`)
-    newLines.push("══════════════")
     await updateDoc(roomRef, {
       [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
       turn_count: (freshData.turn_count ?? 1) + 1,
       game_over: true, winner: enemyName, current_turn: null
     })
+    newLines.push(`${enemyName}의 승리!`)
   } else {
     await updateDoc(roomRef, {
       [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
@@ -480,26 +569,31 @@ async function switchPokemon(newIdx) {
   if (isSpectator || !myTurn || actionDone || gameOver) return
   actionDone = true
 
-  const snap = await getDoc(roomRef)
-  const data = snap.data()
+  const snap      = await getDoc(roomRef)
+  const data      = snap.data()
   const enemySlot = mySlot === "p1" ? "p2" : "p1"
-  const myEntry = data[`${mySlot}_entry`]
-  const prevName = myEntry[data[`${mySlot}_active_idx`]].name
-  const nextName = myEntry[newIdx].name
+  const myEntry   = data[`${mySlot}_entry`]
+  const myName    = mySlot === "p1" ? data.player1_name : data.player2_name
+  const prevName  = myEntry[data[`${mySlot}_active_idx`]].name
+  const nextName  = myEntry[newIdx].name
 
   await updateDoc(roomRef, {
     [`${mySlot}_active_idx`]: newIdx,
     current_turn: enemySlot,
     turn_count: (data.turn_count ?? 1) + 1
   })
-  await addLog(`${prevName} 교체! ${nextName} 등장!`)
+  // 포켓몬 스타일 교체 지문
+  await addLogs([
+    `돌아와, ${prevName}!`,
+    `${myName}은(는) ${nextName}을(를) 내보냈다!`
+  ])
 }
 
 // ── 턴 UI
 function updateTurnUI(data) {
   const el = document.getElementById("turn-display")
   if (el && !isSpectator) {
-    el.innerText = myTurn ? "내 턴!" : "상대 턴..."
+    el.innerText  = myTurn ? "내 턴!" : "상대 턴..."
     el.style.color = myTurn ? "green" : "gray"
   }
   const tc = document.getElementById("turn-count")
