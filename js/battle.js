@@ -71,19 +71,24 @@ function calcHit(attacker, moveInfo, defender) {
 // ── 데미지 계산
 function calcDamage(attacker, moveName, defender) {
   const move = moves[moveName]
-  if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0 }
+  if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0, critical: false }
 
   const dice = rollD10()
   const multiplier = getTypeMultiplier(move.type, defender.type)
-  if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice }
+  if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice, critical: false }
 
   const stab = attacker.type === move.type
   const stabMult = stab ? 1.3 : 1
   const base = (move.power ?? 40) + (attacker.attack ?? 3) * 4 + dice
   const raw = Math.floor(base * multiplier * stabMult)
-  const damage = Math.max(0, raw - (defender.defense ?? 3) * 5)
+  const baseDamage = Math.max(0, raw - (defender.defense ?? 3) * 5)
 
-  return { damage, multiplier, stab, dice }
+  // 급소 판정: 급소율 = 공격력 × 2% (최대 100%)
+  const critChance = Math.min(100, (attacker.attack ?? 3) * 2)
+  const critical = Math.random() * 100 < critChance
+  const damage = critical ? Math.floor(baseDamage * 1.5) : baseDamage
+
+  return { damage, multiplier, stab, dice, critical }
 }
 
 // ── HP바 업데이트
@@ -508,12 +513,13 @@ async function useMove(moveIdx, data) {
       newLines.push(`그러나 ${myPokemon.name}의 공격은 빗나갔다!`)
     }
   } else {
-    const { damage, multiplier, stab, dice } = calcDamage(myPokemon, moveData.name, enePokemon)
+    const { damage, multiplier, stab, dice, critical } = calcDamage(myPokemon, moveData.name, enePokemon)
     if (multiplier === 0) {
       newLines.push(`${enePokemon.name}에게는 효과가 없다…`)
     } else {
       if (multiplier > 1) newLines.push("효과가 굉장했다!")
       if (multiplier < 1) newLines.push("효과가 별로인 듯하다…")
+      if (critical) newLines.push("급소에 맞았다!")
       // 1배는 추가 출력 없음
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
       if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 쓰러졌다!`)
@@ -530,7 +536,6 @@ async function useMove(moveIdx, data) {
       game_over: true, winner: myName, current_turn: null
     })
     // 각 클라이언트가 listenRoom → showGameOver에서 지문 표시
-    // 로그에는 중립 메시지만
     newLines.push(`${myName}의 승리!`)
   } else if (isAllFainted(myEntry)) {
     await updateDoc(roomRef, {
@@ -568,7 +573,7 @@ async function switchPokemon(newIdx) {
     current_turn: enemySlot,
     turn_count: (data.turn_count ?? 1) + 1
   })
-  // 교체 지문
+  // 포켓몬 스타일 교체 지문
   await addLogs([
     `돌아와, ${prevName}!`,
     `${myName}${josa(myName, "은는")} ${nextName}${josa(nextName, "을를")} 내보냈다!`
