@@ -293,29 +293,10 @@ function listenRoom() {
     if (!data.current_turn) {
       if (!isSpectator && mySlot === "p1") {
         initTurn(data)
-      } else if (!isSpectator && mySlot === "p2") {
-        if (!gameStarted) {
-          gameStarted = true
-
-          // p2 입장에서 배틀 시작 지문 (상대가 승부를 걸어옴)
-          if (!battleIntroLogged) {
-            battleIntroLogged = true
-            const enemyName = data.player1_name
-            const myName    = data.player2_name
-            setTimeout(async () => {
-              const s = await getDoc(roomRef)
-              const d = s.data()
-              if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
-            }, 1000)
-          }
-        }
-      } else if (isSpectator && !gameStarted) {
+      } else if (!gameStarted && data.p1_dice && data.p2_dice) {
+        // p2 또는 관전자: onSnapshot에서 주사위 값이 생긴 걸 감지하면 그때 애니메이션 재생
         gameStarted = true
-        setTimeout(async () => {
-          const s = await getDoc(roomRef)
-          const d = s.data()
-          if (d.p1_dice && d.p2_dice) animateDualDice(d.p1_dice, d.p2_dice, () => {})
-        }, 1500)
+        animateDualDice(data.p1_dice, data.p2_dice, () => {})
       }
       return
     }
