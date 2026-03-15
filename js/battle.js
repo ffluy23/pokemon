@@ -247,21 +247,15 @@ async function initTurn(data) {
       p2_dice: p2Roll
     })
 
-    // ── 포켓몬 스타일 배틀 시작 지문 생성
-    const myName    = data.player1_name
-    const enemyName = data.player2_name
+    const p1Name = data.player1_name
+    const p2Name = data.player2_name
     const startLines = []
 
-    // 배틀 시작
-    // 플레이어 관점: 상대 트레이너 이름이 승부를 걸어옴
-    // 관전자 관점: 두 플레이어의 승부 시작
-    startLines.push(`와일드 ${enemyName}이(가) 나타났다!`) // 임시, listenRoom에서 관전자 분기
-
-    // 포켓몬 출격
-    startLines.push(`${myName}은(는) ${p1Pokemon.name}을(를) 내보냈다!`)
-    startLines.push(`${enemyName}은(는) ${p2Pokemon.name}을(를) 내보냈다!`)
-
-    // 선공 판정
+    // p1(실행자) 기준: 상대(p2)가 승부를 걸어왔다
+    // 로그는 전원 공유이므로 트레이너 배틀 지문으로 통일
+    startLines.push(`${p1Name}${josa(p1Name, "과와")} ${p2Name}의 승부가 시작됐다!`)
+    startLines.push(`${p1Name}${josa(p1Name, "은는")} ${p1Pokemon.name}${josa(p1Pokemon.name, "을를")} 내보냈다!`)
+    startLines.push(`${p2Name}${josa(p2Name, "은는")} ${p2Pokemon.name}${josa(p2Pokemon.name, "을를")} 내보냈다!`)
     startLines.push(`${firstPokemon.name}의 선공!`)
 
     await addLogs(startLines)
@@ -530,7 +524,7 @@ async function useMove(moveIdx, data) {
       if (multiplier < 1) newLines.push("효과가 별로인 듯하다…")
       // 1배는 추가 출력 없음
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
-      if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}은(는) 쓰러졌다!`)
+      if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 쓰러졌다!`)
     }
   }
 
@@ -582,10 +576,10 @@ async function switchPokemon(newIdx) {
     current_turn: enemySlot,
     turn_count: (data.turn_count ?? 1) + 1
   })
-  // 포켓몬 스타일 교체 지문
+  // 교체 지문
   await addLogs([
     `돌아와, ${prevName}!`,
-    `${myName}은(는) ${nextName}을(를) 내보냈다!`
+    `${myName}${josa(myName, "은는")} ${nextName}${josa(nextName, "을를")} 내보냈다!`
   ])
 }
 
