@@ -321,8 +321,9 @@ function listenRoom() {
     }
 
     if (!isSpectator) {
+      const wasMine = myTurn
       myTurn = data.current_turn === mySlot
-      actionDone = false
+      if (!wasMine && myTurn) actionDone = false
       updateTurnUI(data)
     }
 
