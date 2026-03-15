@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
 import {
-  doc, collection, getDoc, updateDoc, addDoc, onSnapshot, query, orderBy
+  doc, collection, getDoc, getDocs, updateDoc, addDoc, deleteDoc, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 import { moves } from "./moves.js"
 import { getTypeMultiplier } from "./typeChart.js"
@@ -416,6 +416,11 @@ async function leaveAsSpectator() {
 
 // ── 게임 종료 후 방 나가기
 async function leaveGame() {
+  // 로그 서브컬렉션 전체 삭제
+  const logSnap = await getDocs(logsRef)
+  const deletePromises = logSnap.docs.map(d => deleteDoc(d.ref))
+  await Promise.all(deletePromises)
+
   await updateDoc(roomRef, {
     player1_uid: null, player1_name: null, player1_ready: false,
     player2_uid: null, player2_name: null, player2_ready: false,
