@@ -14,7 +14,7 @@ export const moves = {
   "전광석화":       { power: 30, type: "노말", accuracy: 100, alwaysHit: true, effect: null },
   "몸통박치기":     { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
   "하이퍼보이스":   { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
-  "극대화포":       { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
+  "할퀴기":       { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
 
   // 불
   "화염방사":       { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
