@@ -59,8 +59,8 @@ function isAllFainted(entry) {
 // ── 명중 판정
 // 1단계: 기술 명중률로 발동 판정
 // 2단계: 필중이 아니면 회피율로 회피 판정
-// 회피율 = max(0, min(10, 5 × (상대 스피드 - 내 스피드)))%
-function calcHit(attacker, moveInfo, defender) {
+// 회피율 = max(0, min(10, 5 × (수비측 스피드 - 공격측 스피드)))% + 스피드 랭크업%p (최대 10%)
+function calcHit(attacker, moveInfo, defender, defSpdRank = 0) {
   // 1단계: 기술 명중 판정
   const accuracyRoll = Math.random() * 100
   if (accuracyRoll >= (moveInfo.accuracy ?? 100)) {
@@ -70,8 +70,9 @@ function calcHit(attacker, moveInfo, defender) {
   // 필중 기술은 회피율 무시
   if (moveInfo.alwaysHit) return { hit: true, hitType: "hit" }
 
-  // 2단계: 회피 판정
-  const evasion = Math.max(0, Math.min(10, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
+  // 2단계: 회피 판정 (스피드 랭크업은 선공 무관, 회피율에만 반영)
+  const baseEvasion = Math.max(0, Math.min(10, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
+  const evasion = Math.min(10, baseEvasion + defSpdRank)
   const evasionRoll = Math.random() * 100
   if (evasionRoll < evasion) {
     return { hit: false, hitType: "evaded" }
@@ -81,7 +82,9 @@ function calcHit(attacker, moveInfo, defender) {
 }
 
 // ── 데미지 계산
-function calcDamage(attacker, moveName, defender) {
+// atkRank: 공격 랭크업 (자속보정 이후 정수로 더함, 최대 +4)
+// defRank: 방어 랭크업 (최종 피해에서 rank×3 추가로 빼기, 최대 +3)
+function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
   const move = moves[moveName]
   if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0, critical: false }
 
@@ -93,9 +96,16 @@ function calcDamage(attacker, moveName, defender) {
   const stabMult = stab ? 1.3 : 1
   const base = (move.power ?? 40) + (attacker.attack ?? 3) * 4 + dice
   const raw = Math.floor(base * multiplier * stabMult)
-  const baseDamage = Math.max(0, raw - (defender.defense ?? 3) * 5)
 
-  // 급소 판정: 급소율 = 공격력 × 2% (최대 100%)
+  // 공격 랭크업: 자속보정 이후 정수로 더함 (최대 +4)
+  const atkBonus = Math.min(4, Math.max(0, atkRank))
+  const afterAtk = raw + atkBonus
+
+  // 방어 랭크업: 최종 피해에서 rank×3 추가로 빼기 (최대 +3)
+  const defBonus = Math.min(3, Math.max(0, defRank)) * 3
+  const baseDamage = Math.max(0, afterAtk - (defender.defense ?? 3) * 5 - defBonus)
+
+  // 급소 판정: 급소율 = 공격력 × 2% (최대 100%), 급소는 atkRank 포함 피해에 ×1.5
   const critChance = Math.min(100, (attacker.attack ?? 3) * 2)
   const critical = Math.random() * 100 < critChance
   const damage = critical ? Math.floor(baseDamage * 1.5) : baseDamage
@@ -515,8 +525,63 @@ async function useMove(moveIdx, data) {
   // 공격 지문
   newLines.push(`${myPokemon.name}의 ${moveData.name}!`)
 
-  // 명중 판정
-  const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon)
+  // ── 랭크업 기술 처리
+  // 포켓몬별 랭크 상태: pokemon.ranks = { atk, def, spd, atkTurns, defTurns, spdTurns }
+  if (moveInfo?.rankUp) {
+    const r = moveInfo.rankUp
+    const ranks = { ...(myPokemon.ranks ?? { atk: 0, def: 0, spd: 0, atkTurns: 0, defTurns: 0, spdTurns: 0 }) }
+
+    if (r.atk) {
+      const prevAtk = ranks.atk
+      ranks.atk = Math.min(4, ranks.atk + r.atk)
+      ranks.atkTurns = 1  // 다음 내 공격 1회에만 효과 → 그 공격 후 만료
+      newLines.push(`${myPokemon.name}의 공격이 올라갔다! (공격 랭크 +${ranks.atk - prevAtk})`)
+    }
+    if (r.def) {
+      const prevDef = ranks.def
+      ranks.def = Math.min(3, ranks.def + r.def)
+      ranks.defTurns = 1
+      newLines.push(`${myPokemon.name}의 방어가 올라갔다! (방어 랭크 +${ranks.def - prevDef})`)
+    }
+    if (r.spd) {
+      const prevSpd = ranks.spd
+      ranks.spd = Math.min(5, ranks.spd + r.spd)
+      ranks.spdTurns = 1
+      newLines.push(`${myPokemon.name}의 스피드가 올라갔다! (스피드 랭크 +${ranks.spd - prevSpd})`)
+    }
+    myPokemon.ranks = ranks
+
+    // 랭크업 기술은 공격 없이 턴 종료
+    const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
+    const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
+    await updateDoc(roomRef, {
+      [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
+      current_turn: enemySlot,
+      turn_count: (freshData.turn_count ?? 1) + 1
+    })
+    await addLogs(newLines)
+    return
+  }
+
+  // ── 현재 유효한 랭크 값 읽기 (0턴이면 만료)
+  const myRanks  = myPokemon.ranks ?? {}
+  const atkRank  = (myRanks.atkTurns ?? 0) > 0 ? (myRanks.atk ?? 0) : 0
+  const defRankEnemy = ((enePokemon.ranks ?? {}).defTurns ?? 0) > 0 ? ((enePokemon.ranks ?? {}).def ?? 0) : 0
+  const spdRankEnemy = ((enePokemon.ranks ?? {}).spdTurns ?? 0) > 0 ? ((enePokemon.ranks ?? {}).spd ?? 0) : 0
+
+  // ── 랭크 턴 차감 (내 턴 소모)
+  if (myPokemon.ranks) {
+    if (myPokemon.ranks.atkTurns > 0) myPokemon.ranks.atkTurns--
+    if (myPokemon.ranks.defTurns > 0) myPokemon.ranks.defTurns--
+    if (myPokemon.ranks.spdTurns > 0) myPokemon.ranks.spdTurns--
+    // 만료된 랭크 초기화
+    if (myPokemon.ranks.atkTurns === 0) myPokemon.ranks.atk = 0
+    if (myPokemon.ranks.defTurns === 0) myPokemon.ranks.def = 0
+    if (myPokemon.ranks.spdTurns === 0) myPokemon.ranks.spd = 0
+  }
+
+  // 명중 판정 (수비측 스피드 랭크업 회피율 반영)
+  const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon, spdRankEnemy)
 
   if (!hit) {
     if (hitType === "evaded") {
@@ -525,7 +590,7 @@ async function useMove(moveIdx, data) {
       newLines.push(`그러나 ${myPokemon.name}의 공격은 빗나갔다!`)
     }
   } else {
-    const { damage, multiplier, stab, dice, critical } = calcDamage(myPokemon, moveData.name, enePokemon)
+    const { damage, multiplier, stab, dice, critical } = calcDamage(myPokemon, moveData.name, enePokemon, atkRank, defRankEnemy)
     if (multiplier === 0) {
       newLines.push(`${enePokemon.name}에게는 효과가 없다…`)
     } else {
@@ -586,7 +651,7 @@ async function switchPokemon(newIdx) {
     current_turn: enemySlot,
     turn_count: (data.turn_count ?? 1) + 1
   })
-  // 포켓몬 스타일 교체 지문
+  // 교체 지문
   await addLogs([
     `돌아와, ${prevName}!`,
     `${myName}${josa(myName, "은는")} ${nextName}${josa(nextName, "을를")} 내보냈다!`
