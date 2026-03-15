@@ -284,7 +284,7 @@ function listenRoom() {
     }
 
     if (!data.current_turn) {
-      // p1: 주사위 굴려서 Firestore에 저장 (gameStarted 아직 false일 때만)
+      // p1: 주사위 굴려서 Firestore에 저장 
       if (!isSpectator && mySlot === "p1" && !gameStarted) {
         initTurn(data)
       }
