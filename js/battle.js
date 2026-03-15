@@ -83,7 +83,7 @@ function calcDamage(attacker, moveName, defender) {
   const raw = Math.floor(base * multiplier * stabMult)
   const baseDamage = Math.max(0, raw - (defender.defense ?? 3) * 5)
 
-  // 급소 판정: 급소율 = 공격력 × 2% (최대 100%)
+  // 급소 판정: 급소율 = 공격력 × 2% 
   const critChance = Math.min(100, (attacker.attack ?? 3) * 2)
   const critical = Math.random() * 100 < critChance
   const damage = critical ? Math.floor(baseDamage * 1.5) : baseDamage
@@ -122,8 +122,6 @@ function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
 }
 
 // ── 타이핑 효과 로그 시스템
-// 버그 수정: text[i] → [...text][i] 로 문자 단위 처리
-// 공백 문자도 정확히 처리되도록 수정
 let renderedLogIds = new Set()
 let typingQueue = []
 let isTyping = false
@@ -139,7 +137,7 @@ function processQueue() {
   const line = document.createElement("p")
   log.appendChild(line)
 
-  // 문자 배열로 변환 (이모지·한글 등 유니코드 안전하게 처리)
+  // 문자 배열로 변환
   const chars = [...text]
   let i = 0
 
@@ -149,7 +147,7 @@ function processQueue() {
       setTimeout(processQueue, 80)
       return
     }
-    // 공백도 그대로 출력 (innerText += 이면 trailing space가 잘릴 수 있으므로 textContent 사용)
+    // 공백도 그대로 출력
     line.textContent += chars[i]
     i++
     log.scrollTop = log.scrollHeight
@@ -573,7 +571,7 @@ async function switchPokemon(newIdx) {
     current_turn: enemySlot,
     turn_count: (data.turn_count ?? 1) + 1
   })
-  // 포켓몬 스타일 교체 지문
+  // 교체 지문
   await addLogs([
     `돌아와, ${prevName}!`,
     `${myName}${josa(myName, "은는")} ${nextName}${josa(nextName, "을를")} 내보냈다!`
