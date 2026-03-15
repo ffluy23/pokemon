@@ -32,9 +32,9 @@ export const moves = {
 
   // 전기
   "번개펀치":       { power: 40, type: "전기", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "마비" } },
-  "10만볼트":       { power: 40, type: "전기", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, status: "마비" } },
+  "10만볼트":       { power: 50, type: "전기", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, status: "마비" } },
   "방전":           { power: 40, type: "전기", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
-  "번개":           { power: 40, type: "전기", accuracy: 70,  alwaysHit: false, effect: { chance: 0.3, status: "마비" } },
+  "번개":           { power: 60, type: "전기", accuracy: 70,  alwaysHit: false, effect: { chance: 0.3, status: "마비" } },
   "전기쇼크":       { power: 40, type: "전기", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "마비" } },
 
   // 풀
@@ -65,7 +65,7 @@ export const moves = {
 
   // 바위
   "스톤에지":       { power: 40, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
-  "파워젬":       { power: 40, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
+  "파워젬":       { power: 50, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
   "록블라스트":     { power: 40, type: "바위", accuracy: 90,  alwaysHit: false, effect: null },
 
   // 비행
