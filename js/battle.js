@@ -742,30 +742,62 @@ async function useMove(moveIdx, data) {
   // 공격 지문
   newLines.push(`${myPokemon.name}의 ${moveData.name}!`)
 
-  // ── 랭크업 기술 처리
-  if (moveInfo?.rankUp) {
-    const r = moveInfo.rankUp
-    const ranks = { ...defaultRanks(), ...(myPokemon.ranks ?? {}) }
+  // ── 랭크 기술 처리 (업/다운 통합)
+  // rank 필드: { atk, def, spd } → 양수면 랭크업(자신), 음수면 랭크다운(상대)
+  if (moveInfo?.rank) {
+    const r = moveInfo.rank
+    const myRanks  = { ...defaultRanks(), ...(myPokemon.ranks ?? {}) }
+    const eneRanks = { ...defaultRanks(), ...(enePokemon.ranks ?? {}) }
 
-    if (r.atk) {
-      const prev = ranks.atk
-      ranks.atk = Math.min(4, ranks.atk + r.atk)
-      ranks.atkTurns = 2  // 사용 턴 포함 2턴
-      newLines.push(`${myPokemon.name}의 공격이 올라갔다! (공격 랭크 +${ranks.atk - prev})`)
+    // 공격 랭크
+    if (r.atk !== undefined) {
+      if (r.atk > 0) {
+        // 랭크업: 자신에게 적용
+        const prev = myRanks.atk
+        myRanks.atk = Math.min(4, myRanks.atk + r.atk)
+        myRanks.atkTurns = 2
+        newLines.push(`${myPokemon.name}의 공격이 올라갔다! (공격 랭크 +${myRanks.atk - prev})`)
+      } else {
+        // 랭크다운: 상대에게 적용, 최솟값 0
+        const prev = eneRanks.atk
+        eneRanks.atk = Math.max(0, eneRanks.atk + r.atk) // r.atk가 음수
+        eneRanks.atkTurns = 2
+        newLines.push(`${enePokemon.name}의 공격이 내려갔다! (공격 랭크 ${myRanks.atk - prev})`)
+      }
     }
-    if (r.def) {
-      const prev = ranks.def
-      ranks.def = Math.min(3, ranks.def + r.def)
-      ranks.defTurns = 2
-      newLines.push(`${myPokemon.name}의 방어가 올라갔다! (방어 랭크 +${ranks.def - prev})`)
+
+    // 방어 랭크
+    if (r.def !== undefined) {
+      if (r.def > 0) {
+        const prev = myRanks.def
+        myRanks.def = Math.min(3, myRanks.def + r.def)
+        myRanks.defTurns = 2
+        newLines.push(`${myPokemon.name}의 방어가 올라갔다! (방어 랭크 +${myRanks.def - prev})`)
+      } else {
+        const prev = eneRanks.def
+        eneRanks.def = Math.max(0, eneRanks.def + r.def)
+        eneRanks.defTurns = 2
+        newLines.push(`${enePokemon.name}의 방어가 내려갔다! (방어 랭크 ${eneRanks.def - prev})`)
+      }
     }
-    if (r.spd) {
-      const prev = ranks.spd
-      ranks.spd = Math.min(5, ranks.spd + r.spd)
-      ranks.spdTurns = 2
-      newLines.push(`${myPokemon.name}의 스피드가 올라갔다! (스피드 랭크 +${ranks.spd - prev}%p)`)
+
+    // 스피드 랭크
+    if (r.spd !== undefined) {
+      if (r.spd > 0) {
+        const prev = myRanks.spd
+        myRanks.spd = Math.min(5, myRanks.spd + r.spd)
+        myRanks.spdTurns = 2
+        newLines.push(`${myPokemon.name}의 스피드가 올라갔다! (스피드 랭크 +${myRanks.spd - prev}%p)`)
+      } else {
+        const prev = eneRanks.spd
+        eneRanks.spd = Math.max(0, eneRanks.spd + r.spd)
+        eneRanks.spdTurns = 2
+        newLines.push(`${enePokemon.name}의 스피드가 내려갔다! (스피드 랭크 ${eneRanks.spd - prev}%p)`)
+      }
     }
-    myPokemon.ranks = ranks
+
+    myPokemon.ranks  = myRanks
+    enePokemon.ranks = eneRanks
 
     await updateDoc(roomRef, {
       [`${mySlot}_entry`]: myEntry,
@@ -778,8 +810,8 @@ async function useMove(moveIdx, data) {
   }
 
   // ── 현재 유효한 랭크 값 읽기
-  const atkRank     = getActiveRank(myPokemon, "atk")
-  const defRankEne  = getActiveRank(enePokemon, "def")
+  const atkRank    = getActiveRank(myPokemon, "atk")
+  const defRankEne = getActiveRank(enePokemon, "def")
 
   // ── 내 공격/스피드 랭크 차감 (이번 행동 소모)
   tickMyRanks(myPokemon)
@@ -810,29 +842,27 @@ async function useMove(moveIdx, data) {
 
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
 
-      // ── 상태이상 부여 (기술에 status 필드가 있을 경우)
-      if (moveInfo?.inflictStatus && enePokemon.hp > 0 && !enePokemon.status) {
-        const { status, chance } = moveInfo.inflictStatus
-        if (Math.random() * 100 < (chance ?? 100)) {
-          enePokemon.status = status
-          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} ${statusName(status)} 상태가 됐다!`)
-        }
-      }
+      // ── 부가효과 처리 (moves.js effect 구조 기준)
+      const effect = moveInfo?.effect
+      if (effect && enePokemon.hp > 0) {
+        const roll = Math.random()
 
-      // ── 상태변화 부여 (기술에 inflictConfusion / inflictFlinch 필드가 있을 경우)
-      if (moveInfo?.inflictConfusion && enePokemon.hp > 0) {
-        const { chance } = moveInfo.inflictConfusion
-        if (Math.random() * 100 < (chance ?? 100) && !(enePokemon.confusion ?? 0)) {
-          const turns = Math.floor(Math.random() * 3) + 1 // 1~3턴
-          enePokemon.confusion = turns
+        // 상태이상 부여 (상대에게 이미 상태이상 없을 때만)
+        if (effect.status && roll < effect.chance && !enePokemon.status) {
+          enePokemon.status = effect.status
+          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} ${statusName(effect.status)} 상태가 됐다!`)
+        }
+
+        // 혼란 부여
+        if (effect.volatile === "혼란" && roll < effect.chance && !(enePokemon.confusion ?? 0)) {
+          enePokemon.confusion = Math.floor(Math.random() * 3) + 1 // 1~3턴
           newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 혼란에 빠졌다!`)
         }
-      }
-      if (moveInfo?.inflictFlinch && enePokemon.hp > 0) {
-        const { chance } = moveInfo.inflictFlinch
-        if (Math.random() * 100 < (chance ?? 100)) {
+
+        // 풀죽음 부여
+        if (effect.volatile === "풀죽음" && roll < effect.chance) {
           enePokemon.flinch = true
-          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 풀이 죽어 움직일 수 없었!`)
+          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 풀이 죽었다!`)
         }
       }
 
