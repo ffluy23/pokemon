@@ -56,24 +56,82 @@ function isAllFainted(entry) {
   return entry.every(p => p.hp <= 0)
 }
 
-// ── 명중 판정
-// 1단계: 기술 명중률로 발동 판정
-// 2단계: 필중이 아니면 회피율로 회피 판정
-// 회피율 = max(0, min(10, 5 × (수비측 스피드 - 공격측 스피드)))% + 스피드 랭크업%p (최대 10%)
-function calcHit(attacker, moveInfo, defender, defSpdRank = 0) {
-  // 1단계: 기술 명중 판정
+// ──────────────────────────────────────────────
+// 랭크 시스템
+// ranks = {
+//   atk: 0, atkTurns: 0,   // 공격 랭크 (최대 +4, 최솟값 0)
+//   def: 0, defTurns: 0,   // 방어 랭크 (최대 +3)
+//   spd: 0, spdTurns: 0,   // 스피드 랭크 (최대 +5%p)
+// }
+// atkTurns/defTurns/spdTurns: 남은 지속 턴 수
+//   기술 사용 턴 포함 2턴 → 사용 직후 2로 세팅
+//   해당 포켓몬이 행동할 때마다 1씩 차감 → 0이 되면 만료
+// ──────────────────────────────────────────────
+
+function defaultRanks() {
+  return { atk: 0, atkTurns: 0, def: 0, defTurns: 0, spd: 0, spdTurns: 0 }
+}
+
+// 랭크값 읽기 (턴이 남아 있을 때만 유효)
+function getActiveRank(pokemon, key) {
+  const r = pokemon.ranks ?? {}
+  return (r[`${key}Turns`] ?? 0) > 0 ? (r[key] ?? 0) : 0
+}
+
+// 공격 측 턴 소모 (내 행동 시작 시 내 랭크 차감)
+function tickMyRanks(pokemon) {
+  if (!pokemon.ranks) return
+  const r = pokemon.ranks
+  if (r.atkTurns > 0) { r.atkTurns--; if (r.atkTurns === 0) r.atk = 0 }
+  if (r.spdTurns > 0) { r.spdTurns--; if (r.spdTurns === 0) r.spd = 0 }
+  // defTurns는 피격 시 만료이므로 여기서 차감 안 함
+}
+
+// 피격 시 수비측 방어 랭크 만료
+function expireDefRank(pokemon) {
+  if (!pokemon.ranks) return
+  pokemon.ranks.defTurns = 0
+  pokemon.ranks.def = 0
+}
+
+// 수비측 스피드 랭크 차감 (회피 판정 이후)
+function tickEnemySpdRank(pokemon) {
+  if (!pokemon.ranks) return
+  const r = pokemon.ranks
+  if (r.spdTurns > 0) { r.spdTurns--; if (r.spdTurns === 0) r.spd = 0 }
+}
+
+// ──────────────────────────────────────────────
+// 명중 판정
+// 1단계: 기술 명중률
+// 2단계: 회피율 = 5 × (수비 스피드 - 공격 스피드)% ± 스피드 랭크%p
+// ──────────────────────────────────────────────
+function calcHit(attacker, moveInfo, defender) {
+  // 1단계: 기술 명중
   const accuracyRoll = Math.random() * 100
   if (accuracyRoll >= (moveInfo.accuracy ?? 100)) {
     return { hit: false, hitType: "missed" }
   }
 
-  // 필중 기술은 회피율 무시
   if (moveInfo.alwaysHit) return { hit: true, hitType: "hit" }
 
-  // 2단계: 회피 판정 (스피드 랭크업은 선공 무관, 회피율에만 반영)
-  const baseEvasion = Math.max(0, Math.min(10, 5 * ((defender.speed ?? 3) - (attacker.speed ?? 3))))
-  const spdRankBonus = Math.min(5, Math.max(0, defSpdRank))
-  const evasion = Math.min(15, baseEvasion + spdRankBonus)  // 기본 최대 10% + 랭크업 최대 5% = 15%
+  // 마비로 인한 스피드 감소 반영 (-1)
+  const atkSpdPenalty = attacker.status === "paralysis" ? 1 : 0
+  const defSpdPenalty = defender.status === "paralysis" ? 1 : 0
+
+  // 얼음으로 인한 스피드 감소 반영 (-3)
+  const atkIcePenalty = attacker.status === "frozen" ? 3 : 0
+  const defIcePenalty = defender.status === "frozen" ? 3 : 0
+
+  const atkSpd = Math.max(1, (attacker.speed ?? 3) - atkSpdPenalty - atkIcePenalty)
+  const defSpd = Math.max(1, (defender.speed ?? 3) - defSpdPenalty - defIcePenalty)
+
+  // 2단계: 회피율
+  const spdDiff = defSpd - atkSpd
+  const baseEvasion = Math.max(0, 5 * spdDiff)
+  const defSpdRankBonus = Math.max(0, getActiveRank(defender, "spd"))
+  const evasion = Math.min(99, baseEvasion + defSpdRankBonus) // 최대 99%로 제한
+
   const evasionRoll = Math.random() * 100
   if (evasionRoll < evasion) {
     return { hit: false, hitType: "evaded" }
@@ -82,41 +140,44 @@ function calcHit(attacker, moveInfo, defender, defSpdRank = 0) {
   return { hit: true, hitType: "hit" }
 }
 
-// ── 데미지 계산
-// atkRank: 공격 랭크업 (자속보정 이후 정수로 더함, 최대 +4)
-// defRank: 방어 랭크업 (최종 피해에서 rank×3 추가로 빼기, 최대 +3)
+// ──────────────────────────────────────────────
+// 데미지 계산
+// ((위력 + 공격력×4 + 1d10) × 타입상성 × 자속보정 ± 공격 랭크) - (방어력×5) - (방어 랭크×3)
+// ──────────────────────────────────────────────
 function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
   const move = moves[moveName]
   if (!move) return { damage: 0, multiplier: 1, stab: false, dice: 0, critical: false }
 
   const dice = rollD10()
 
-  // 수비측 타입이 배열일 수 있으므로 순회해서 곱함
-  // 4배 약점(1.8×1.8=3.24) → 룰상 3.6으로 처리: 두 타입 모두 약점이면 1.8×2
   const defTypes = Array.isArray(defender.type) ? defender.type : [defender.type]
   let multiplier = 1
   for (const dt of defTypes) {
     multiplier *= getTypeMultiplier(move.type, dt)
   }
-  // 두 타입 모두 약점이어도 그냥 1.8×1.8=3.24 그대로 사용
   if (multiplier === 0) return { damage: 0, multiplier: 0, stab: false, dice, critical: false }
 
-  // 자속보정: 공격 포켓몬 타입도 배열 지원
   const atkTypes = Array.isArray(attacker.type) ? attacker.type : [attacker.type]
   const stab = atkTypes.includes(move.type)
   const stabMult = stab ? 1.3 : 1
+
   const base = (move.power ?? 40) + (attacker.attack ?? 3) * 4 + dice
   const raw = Math.floor(base * multiplier * stabMult)
 
-  // 공격 랭크업: 자속보정 이후 정수로 더함 (최대 +4)
-  const atkBonus = Math.min(4, Math.max(0, atkRank))
-  const afterAtk = raw + atkBonus
+  // 공격 랭크: 자속보정 이후 정수로 ±, 최솟값 0
+  const clampedAtkRank = Math.max(-raw, atkRank) // 음수로 떨어지지 않도록
+  const afterAtk = Math.max(0, raw + clampedAtkRank)
 
-  // 방어 랭크업: 최종 피해에서 rank×3 추가로 빼기 (최대 +3)
-  const defBonus = Math.min(3, Math.max(0, defRank)) * 3
-  const baseDamage = Math.max(0, afterAtk - (defender.defense ?? 3) * 5 - defBonus)
+  // 방어 감소
+  const defReduction = (attacker.defense ?? 3) * 5  // 사용하는 쪽이 아니라 수비 측 방어력
+  // 오타 수정: defender.defense 사용
+  const afterDef = Math.max(0, afterAtk - (defender.defense ?? 3) * 5)
 
-  // 급소 판정: 급소율 = 공격력 × 2% (최대 100%), 급소는 atkRank 포함 피해에 ×1.5
+  // 방어 랭크: 최대 +3, 피해 = afterDef - (defRank × 3), 최솟값 0
+  const defRankReduction = Math.min(3, Math.max(0, defRank)) * 3
+  const baseDamage = Math.max(0, afterDef - defRankReduction)
+
+  // 급소: 공격력×2% 확률, 급소는 공격 랭크 포함 피해에 ×1.5 (급소율에 공격 랭크 영향 없음)
   const critChance = Math.min(100, (attacker.attack ?? 3) * 2)
   const critical = Math.random() * 100 < critChance
   const damage = critical ? Math.floor(baseDamage * 1.5) : baseDamage
@@ -124,39 +185,86 @@ function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
   return { damage, multiplier, stab, dice, critical }
 }
 
-// ── HP바 업데이트
-// showNumbers: true면 HP 숫자도 표시, false면 바만
+// ──────────────────────────────────────────────
+// 상태이상 처리
+// ──────────────────────────────────────────────
+
+// 마비: 25% 확률로 행동 불가
+function checkParalysis(pokemon) {
+  if (pokemon.status !== "paralysis") return false
+  return Math.random() < 0.25
+}
+
+// 얼음: 20% 확률로 해제
+function checkFreeze(pokemon) {
+  if (pokemon.status !== "frozen") return false
+  return Math.random() < 0.20
+}
+
+// 턴 종료 시 독/화상 데미지 (최대 HP의 1/16, 소수점 버림, 최소 1)
+function calcPoisonBurnDamage(pokemon) {
+  if (pokemon.status !== "poison" && pokemon.status !== "burn") return 0
+  return Math.max(1, Math.floor((pokemon.maxHp ?? pokemon.hp) / 16))
+}
+
+// 상태이상 한글명
+function statusName(status) {
+  const map = { poison: "독", burn: "화상", paralysis: "마비", frozen: "얼음" }
+  return map[status] ?? status
+}
+
+// ──────────────────────────────────────────────
+// 상태변화 처리
+// ──────────────────────────────────────────────
+
+// 혼란: 33.3% 확률로 자해 (공격력×2 고정 위력)
+function checkConfusion(pokemon) {
+  if (!(pokemon.confusion ?? 0)) return { triggered: false }
+  return { triggered: Math.random() < 1 / 3 }
+}
+
+function calcConfusionDamage(pokemon) {
+  return (pokemon.attack ?? 3) * 2
+}
+
+// 혼란 지속 턴 차감 (매 행동 시작 시)
+function tickConfusion(pokemon) {
+  if (!(pokemon.confusion ?? 0)) return
+  pokemon.confusion--
+}
+
+// 풀죽음: 1턴 지속, 행동 불가
+function checkFlinch(pokemon) {
+  return !!(pokemon.flinch)
+}
+
+function clearFlinch(pokemon) {
+  pokemon.flinch = false
+}
+
+// ──────────────────────────────────────────────
+// HP바 업데이트
+// ──────────────────────────────────────────────
 function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
   const bar = document.getElementById(barId)
   const text = textId ? document.getElementById(textId) : null
-
   if (!bar) return
 
   const pct = maxHp > 0 ? Math.max(0, Math.min(100, (hp / maxHp) * 100)) : 0
-
   bar.style.width = pct + "%"
 
-  // 체력 비율에 따라 색상 변경
-  if (pct > 50) {
-    bar.style.backgroundColor = "#4caf50" // 초록
-  } else if (pct > 20) {
-    bar.style.backgroundColor = "#ff9800" // 주황
-  } else {
-    bar.style.backgroundColor = "#f44336" // 빨강
-  }
+  if (pct > 50) bar.style.backgroundColor = "#4caf50"
+  else if (pct > 20) bar.style.backgroundColor = "#ff9800"
+  else bar.style.backgroundColor = "#f44336"
 
   if (text) {
-    if (showNumbers) {
-      text.innerText = `HP: ${hp} / ${maxHp}`
-    } else {
-      text.innerText = ""
-    }
+    text.innerText = showNumbers ? `HP: ${hp} / ${maxHp}` : ""
   }
 }
 
-// ── 타이핑 효과 로그 시스템
-// 버그 수정: text[i] → [...text][i] 로 문자 단위 처리
-// 공백 문자도 정확히 처리되도록 수정
+// ──────────────────────────────────────────────
+// 타이핑 로그 시스템
+// ──────────────────────────────────────────────
 let renderedLogIds = new Set()
 let typingQueue = []
 let isTyping = false
@@ -172,7 +280,6 @@ function processQueue() {
   const line = document.createElement("p")
   log.appendChild(line)
 
-  // 문자 배열로 변환 (이모지·한글 등 유니코드 안전하게 처리)
   const chars = [...text]
   let i = 0
 
@@ -182,7 +289,6 @@ function processQueue() {
       setTimeout(processQueue, 80)
       return
     }
-    // 공백도 그대로 출력 (innerText += 이면 trailing space가 잘릴 수 있으므로 textContent 사용)
     line.textContent += chars[i]
     i++
     log.scrollTop = log.scrollHeight
@@ -192,7 +298,6 @@ function processQueue() {
   typeNext()
 }
 
-// ── 로그 추가
 async function addLog(text) {
   await addDoc(logsRef, { text, ts: Date.now() })
 }
@@ -204,7 +309,6 @@ async function addLogs(lines) {
   }
 }
 
-// ── 로그 실시간 리스닝
 function listenLogs() {
   const q = query(logsRef, orderBy("ts"))
   onSnapshot(q, (snap) => {
@@ -217,15 +321,16 @@ function listenLogs() {
   })
 }
 
-// ── 조사 처리 유틸 (은/는, 이/가, 을/를, 과/와, 으로/로)
+// ──────────────────────────────────────────────
+// 조사 처리 유틸
+// ──────────────────────────────────────────────
 function josa(word, type) {
   if (!word) return type === "은는" ? "은" : type === "이가" ? "이" : type === "을를" ? "을" : type === "과와" ? "과" : "으로"
   const code = word.charCodeAt(word.length - 1)
   if (code < 0xAC00 || code > 0xD7A3) {
-    // 한글 아닌 경우 기본값
     return type === "은는" ? "은" : type === "이가" ? "이" : type === "을를" ? "을" : type === "과와" ? "과" : "으로"
   }
-  const hasFinal = (code - 0xAC00) % 28 !== 0 // 받침 있으면 true
+  const hasFinal = (code - 0xAC00) % 28 !== 0
   if (type === "은는") return hasFinal ? "은" : "는"
   if (type === "이가") return hasFinal ? "이" : "가"
   if (type === "을를") return hasFinal ? "을" : "를"
@@ -234,7 +339,9 @@ function josa(word, type) {
   return ""
 }
 
-// ── 주사위 2개 모션 (선공 판정용)
+// ──────────────────────────────────────────────
+// 주사위 2개 모션
+// ──────────────────────────────────────────────
 function animateDualDice(p1Roll, p2Roll, onDone) {
   const p1El = document.getElementById("dice-p1")
   const p2El = document.getElementById("dice-p2")
@@ -263,8 +370,9 @@ function animateDualDice(p1Roll, p2Roll, onDone) {
   }, 60)
 }
 
-// ── 선공 판정 (p1만 실행) — 주사위값 계산 후 Firestore에 저장만 함
-// 애니메이션은 listenRoom에서 전원(p1 포함) 통일 처리
+// ──────────────────────────────────────────────
+// 선공 판정 (p1만 실행)
+// ──────────────────────────────────────────────
 async function initTurn(data) {
   if (gameStarted) return
   gameStarted = true
@@ -278,8 +386,6 @@ async function initTurn(data) {
   const firstSlot = p1Total >= p2Total ? "p1" : "p2"
   const firstPokemon = firstSlot === "p1" ? p1Pokemon : p2Pokemon
 
-  // 주사위값 + first_slot + first_pokemon_name 한 번에 저장
-  // intro_done은 로그 추가 후 p1이 true로 설정 → 중복 실행 방지
   await updateDoc(roomRef, {
     first_slot: firstSlot,
     first_pokemon_name: firstPokemon.name,
@@ -288,7 +394,9 @@ async function initTurn(data) {
   })
 }
 
-// ── 실시간 리스닝
+// ──────────────────────────────────────────────
+// 실시간 리스닝
+// ──────────────────────────────────────────────
 let battleIntroLogged = false
 
 function listenRoom() {
@@ -317,16 +425,12 @@ function listenRoom() {
     }
 
     if (!data.current_turn) {
-      // p1: 주사위 굴려서 Firestore에 저장 (gameStarted 아직 false일 때만)
       if (!isSpectator && mySlot === "p1" && !gameStarted) {
         initTurn(data)
       }
-      // 전원(p1 포함): 필요한 값이 모두 있을 때 애니메이션 재생 (diceShown으로 중복 방지)
       if (!diceShown && data.p1_dice && data.p2_dice && data.first_slot && data.first_pokemon_name) {
         diceShown = true
         animateDualDice(data.p1_dice, data.p2_dice, async () => {
-          // 애니메이션 끝난 후 p1만 current_turn + 로그 설정
-          // intro_done 필드로 Firestore 레벨에서 중복 실행 완전 차단
           if (!isSpectator && mySlot === "p1" && !data.intro_done) {
             const p1Name = data.player1_name
             const p2Name = data.player2_name
@@ -359,7 +463,9 @@ function listenRoom() {
   })
 }
 
-// ── 게임 종료 UI
+// ──────────────────────────────────────────────
+// 게임 종료 UI
+// ──────────────────────────────────────────────
 function showGameOver(data) {
   const turnDisplay = document.getElementById("turn-display")
 
@@ -402,7 +508,9 @@ function showGameOver(data) {
   }
 }
 
-// ── 관전자 나가기
+// ──────────────────────────────────────────────
+// 관전자 나가기
+// ──────────────────────────────────────────────
 async function leaveAsSpectator() {
   const snap = await getDoc(roomRef)
   const data = snap.data()
@@ -414,9 +522,10 @@ async function leaveAsSpectator() {
   location.href = "../main.html"
 }
 
-// ── 게임 종료 후 방 나가기
+// ──────────────────────────────────────────────
+// 게임 종료 후 방 나가기
+// ──────────────────────────────────────────────
 async function leaveGame() {
-  // 로그 서브컬렉션 전체 삭제
   const logSnap = await getDocs(logsRef)
   const deletePromises = logSnap.docs.map(d => deleteDoc(d.ref))
   await Promise.all(deletePromises)
@@ -434,15 +543,20 @@ async function leaveGame() {
   location.href = "../main.html"
 }
 
-// ── 포켓몬 UI (HP바 포함)
+// ──────────────────────────────────────────────
+// 포켓몬 UI (HP바 + 상태이상 표시)
+// ──────────────────────────────────────────────
 function updateActiveUI(slot, data, prefix) {
   const activeIdx = data[`${slot}_active_idx`]
   const pokemon   = data[`${slot}_entry`][activeIdx]
   if (!pokemon) return
 
-  document.getElementById(`${prefix}-active-name`).innerText = pokemon.name
+  // 상태이상 표기
+  const statusTag = pokemon.status ? ` [${statusName(pokemon.status)}]` : ""
+  const confusionTag = (pokemon.confusion ?? 0) > 0 ? " [혼란]" : ""
+  document.getElementById(`${prefix}-active-name`).innerText = pokemon.name + statusTag + confusionTag
 
-  const showNumbers = (prefix === "my") // 내 포켓몬만 숫자 표시
+  const showNumbers = (prefix === "my")
   updateHpBar(
     `${prefix}-hp-bar`,
     `${prefix}-active-hp`,
@@ -452,7 +566,9 @@ function updateActiveUI(slot, data, prefix) {
   )
 }
 
-// ── 기술 버튼
+// ──────────────────────────────────────────────
+// 기술 버튼
+// ──────────────────────────────────────────────
 function updateMoveButtons(data) {
   const myActiveIdx = data[`${mySlot}_active_idx`]
   const myPokemon   = data[`${mySlot}_entry`][myActiveIdx]
@@ -485,12 +601,14 @@ function updateMoveButtons(data) {
   }
 }
 
-// ── 교체 버튼
+// ──────────────────────────────────────────────
+// 교체 버튼
+// ──────────────────────────────────────────────
 function updateBenchButtons(data) {
   const benchContainer = document.getElementById("bench-container")
   benchContainer.innerHTML = ""
 
-  const myEntry  = data[`${mySlot}_entry`]
+  const myEntry   = data[`${mySlot}_entry`]
   const activeIdx = data[`${mySlot}_active_idx`]
 
   myEntry.forEach((pkmn, idx) => {
@@ -508,7 +626,9 @@ function updateBenchButtons(data) {
   })
 }
 
-// ── 기술 사용
+// ──────────────────────────────────────────────
+// 기술 사용 (메인 액션)
+// ──────────────────────────────────────────────
 async function useMove(moveIdx, data) {
   if (isSpectator || !myTurn || actionDone || gameOver) return
   actionDone = true
@@ -521,8 +641,16 @@ async function useMove(moveIdx, data) {
   const myActiveIdx  = freshData[`${mySlot}_active_idx`]
   const eneActiveIdx = freshData[`${enemySlot}_active_idx`]
 
-  const myEntry    = freshData[`${mySlot}_entry`].map(p => ({ ...p, moves: (p.moves ?? []).map(m => ({ ...m })) }))
-  const enemyEntry = freshData[`${enemySlot}_entry`].map(p => ({ ...p }))
+  // 깊은 복사
+  const myEntry    = freshData[`${mySlot}_entry`].map(p => ({
+    ...p,
+    moves: (p.moves ?? []).map(m => ({ ...m })),
+    ranks: { ...defaultRanks(), ...(p.ranks ?? {}) }
+  }))
+  const enemyEntry = freshData[`${enemySlot}_entry`].map(p => ({
+    ...p,
+    ranks: { ...defaultRanks(), ...(p.ranks ?? {}) }
+  }))
 
   const myPokemon  = myEntry[myActiveIdx]
   const enePokemon = enemyEntry[eneActiveIdx]
@@ -532,46 +660,116 @@ async function useMove(moveIdx, data) {
   const moveData = myPokemon.moves[moveIdx]
   if (!moveData || moveData.pp <= 0) { actionDone = false; return }
 
-  // PP 차감
+  const newLines = []
+
+  // ── 풀죽음 체크 (행동 불가)
+  if (checkFlinch(myPokemon)) {
+    clearFlinch(myPokemon)
+    newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 풀이 죽어서 움직일 수 없다!`)
+    await updateDoc(roomRef, {
+      [`${mySlot}_entry`]: myEntry,
+      current_turn: enemySlot,
+      turn_count: (freshData.turn_count ?? 1) + 1
+    })
+    await addLogs(newLines)
+    return
+  }
+
+  // ── 마비 행동불가 체크 (25%)
+  if (checkParalysis(myPokemon)) {
+    newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 마비 때문에 움직일 수 없다!`)
+    await updateDoc(roomRef, {
+      [`${mySlot}_entry`]: myEntry,
+      current_turn: enemySlot,
+      turn_count: (freshData.turn_count ?? 1) + 1
+    })
+    await addLogs(newLines)
+    return
+  }
+
+  // ── 얼음 해제 체크 (20%)
+  if (myPokemon.status === "frozen") {
+    if (checkFreeze(myPokemon)) {
+      myPokemon.status = null
+      newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 얼음 상태에서 회복됐다!`)
+      // 해제됐으면 이번 턴은 행동 불가
+      await updateDoc(roomRef, {
+        [`${mySlot}_entry`]: myEntry,
+        current_turn: enemySlot,
+        turn_count: (freshData.turn_count ?? 1) + 1
+      })
+      await addLogs(newLines)
+      return
+    } else {
+      newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 꽁꽁 얼어서 움직일 수 없다!`)
+      await updateDoc(roomRef, {
+        [`${mySlot}_entry`]: myEntry,
+        current_turn: enemySlot,
+        turn_count: (freshData.turn_count ?? 1) + 1
+      })
+      await addLogs(newLines)
+      return
+    }
+  }
+
+  // ── 혼란 체크 (33.3%)
+  tickConfusion(myPokemon)
+  if ((myPokemon.confusion ?? 0) > 0) {
+    const { triggered } = checkConfusion(myPokemon)
+    if (triggered) {
+      const selfDmg = calcConfusionDamage(myPokemon)
+      myPokemon.hp = Math.max(0, myPokemon.hp - selfDmg)
+      newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 혼란으로 자기 자신을 공격했다! (${selfDmg} 데미지)`)
+      if (myPokemon.hp <= 0) {
+        newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 쓰러졌다!`)
+      }
+      await updateDoc(roomRef, {
+        [`${mySlot}_entry`]: myEntry,
+        current_turn: enemySlot,
+        turn_count: (freshData.turn_count ?? 1) + 1
+      })
+      await addLogs(newLines)
+      return
+    }
+  }
+  if ((myPokemon.confusion ?? 0) <= 0) myPokemon.confusion = 0
+
+  // ── PP 차감
   myPokemon.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
 
   const moveInfo = moves[moveData.name]
-  const newLines = []
 
   // 공격 지문
   newLines.push(`${myPokemon.name}의 ${moveData.name}!`)
 
   // ── 랭크업 기술 처리
-  // 포켓몬별 랭크 상태: pokemon.ranks = { atk, def, spd, atkTurns, defTurns, spdTurns }
   if (moveInfo?.rankUp) {
     const r = moveInfo.rankUp
-    const ranks = { ...(myPokemon.ranks ?? { atk: 0, def: 0, spd: 0, atkTurns: 0, defTurns: 0, spdTurns: 0 }) }
+    const ranks = { ...defaultRanks(), ...(myPokemon.ranks ?? {}) }
 
     if (r.atk) {
-      const prevAtk = ranks.atk
+      const prev = ranks.atk
       ranks.atk = Math.min(4, ranks.atk + r.atk)
-      ranks.atkTurns = 1  // 다음 내 공격 1회에만 효과 → 그 공격 후 만료
-      newLines.push(`${myPokemon.name}의 공격이 올라갔다! (공격 랭크 +${ranks.atk - prevAtk})`)
+      ranks.atkTurns = 2  // 사용 턴 포함 2턴
+      newLines.push(`${myPokemon.name}의 공격이 올라갔다! (공격 랭크 +${ranks.atk - prev})`)
     }
     if (r.def) {
-      const prevDef = ranks.def
+      const prev = ranks.def
       ranks.def = Math.min(3, ranks.def + r.def)
-      ranks.defTurns = 1
-      newLines.push(`${myPokemon.name}의 방어가 올라갔다! (방어 랭크 +${ranks.def - prevDef})`)
+      ranks.defTurns = 2
+      newLines.push(`${myPokemon.name}의 방어가 올라갔다! (방어 랭크 +${ranks.def - prev})`)
     }
     if (r.spd) {
-      const prevSpd = ranks.spd
+      const prev = ranks.spd
       ranks.spd = Math.min(5, ranks.spd + r.spd)
-      ranks.spdTurns = 1
-      newLines.push(`${myPokemon.name}의 스피드가 올라갔다! (스피드 랭크 +${ranks.spd - prevSpd})`)
+      ranks.spdTurns = 2
+      newLines.push(`${myPokemon.name}의 스피드가 올라갔다! (스피드 랭크 +${ranks.spd - prev}%p)`)
     }
     myPokemon.ranks = ranks
 
-    // 랭크업 기술은 공격 없이 턴 종료
-    const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
-    const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
     await updateDoc(roomRef, {
-      [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
+      [`${mySlot}_entry`]: myEntry,
+      [`${enemySlot}_entry`]: enemyEntry,
       current_turn: enemySlot,
       turn_count: (freshData.turn_count ?? 1) + 1
     })
@@ -580,25 +778,17 @@ async function useMove(moveIdx, data) {
   }
 
   // ── 현재 유효한 랭크 값 읽기
-  const myRanks  = myPokemon.ranks ?? {}
-  const atkRank  = (myRanks.atkTurns ?? 0) > 0 ? (myRanks.atk ?? 0) : 0
-  const spdRankEnemy = ((enePokemon.ranks ?? {}).spdTurns ?? 0) > 0 ? ((enePokemon.ranks ?? {}).spd ?? 0) : 0
+  const atkRank     = getActiveRank(myPokemon, "atk")
+  const defRankEne  = getActiveRank(enePokemon, "def")
 
-  // 방어 랭크: 상대(수비측) 방어 랭크를 읽고 → 공격 적중 시 즉시 만료
-  const eneRanks = enePokemon.ranks ?? {}
-  const defRankEnemy = (eneRanks.defTurns ?? 0) > 0 ? (eneRanks.def ?? 0) : 0
+  // ── 내 공격/스피드 랭크 차감 (이번 행동 소모)
+  tickMyRanks(myPokemon)
 
-  // ── 공격 랭크 차감 (내 턴 소모)
-  if (myPokemon.ranks) {
-    if (myPokemon.ranks.atkTurns > 0) { myPokemon.ranks.atkTurns--; if (myPokemon.ranks.atkTurns === 0) myPokemon.ranks.atk = 0 }
-    if (myPokemon.ranks.spdTurns > 0) { myPokemon.ranks.spdTurns--; if (myPokemon.ranks.spdTurns === 0) myPokemon.ranks.spd = 0 }
-  }
+  // ── 명중 판정
+  const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon)
 
-  // 명중 판정 (수비측 스피드 랭크업 회피율 반영)
-  const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon, spdRankEnemy)
-
-  // 스피드 랭크 차감 (수비측, 회피 판정 이후 소모)
-  if (enePokemon.ranks?.spdTurns > 0) { enePokemon.ranks.spdTurns--; if (enePokemon.ranks.spdTurns === 0) enePokemon.ranks.spd = 0 }
+  // ── 수비측 스피드 랭크 차감 (회피 판정 이후)
+  tickEnemySpdRank(enePokemon)
 
   if (!hit) {
     if (hitType === "evaded") {
@@ -607,52 +797,110 @@ async function useMove(moveIdx, data) {
       newLines.push(`그러나 ${myPokemon.name}의 공격은 빗나갔다!`)
     }
   } else {
-    const { damage, multiplier, stab, dice, critical } = calcDamage(myPokemon, moveData.name, enePokemon, atkRank, defRankEnemy)
+    const { damage, multiplier, stab, dice, critical } = calcDamage(
+      myPokemon, moveData.name, enePokemon, atkRank, defRankEne
+    )
+
     if (multiplier === 0) {
       newLines.push(`${enePokemon.name}에게는 효과가 없다…`)
     } else {
       if (multiplier > 1) newLines.push("효과가 굉장했다!")
       if (multiplier < 1) newLines.push("효과가 별로인 듯하다…")
       if (critical) newLines.push("급소에 맞았다!")
-      // 1배는 추가 출력 없음
+
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
+
+      // ── 상태이상 부여 (기술에 status 필드가 있을 경우)
+      if (moveInfo?.inflictStatus && enePokemon.hp > 0 && !enePokemon.status) {
+        const { status, chance } = moveInfo.inflictStatus
+        if (Math.random() * 100 < (chance ?? 100)) {
+          enePokemon.status = status
+          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} ${statusName(status)} 상태가 됐다!`)
+        }
+      }
+
+      // ── 상태변화 부여 (기술에 inflictConfusion / inflictFlinch 필드가 있을 경우)
+      if (moveInfo?.inflictConfusion && enePokemon.hp > 0) {
+        const { chance } = moveInfo.inflictConfusion
+        if (Math.random() * 100 < (chance ?? 100) && !(enePokemon.confusion ?? 0)) {
+          const turns = Math.floor(Math.random() * 3) + 1 // 1~3턴
+          enePokemon.confusion = turns
+          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 혼란에 빠졌다!`)
+        }
+      }
+      if (moveInfo?.inflictFlinch && enePokemon.hp > 0) {
+        const { chance } = moveInfo.inflictFlinch
+        if (Math.random() * 100 < (chance ?? 100)) {
+          enePokemon.flinch = true
+          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 풀이 죽어 움직일 수 없었!`)
+        }
+      }
+
       if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 쓰러졌다!`)
-      // 방어 랭크: 공격 적중 시 즉시 만료
-      if (enePokemon.ranks?.defTurns > 0) { enePokemon.ranks.defTurns = 0; enePokemon.ranks.def = 0 }
+
+      // 피격 시 수비측 방어 랭크 만료
+      expireDefRank(enePokemon)
     }
   }
 
   const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
   const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
 
+  // ── 턴 종료 처리 (독/화상 데미지, 게임 종료 체크)
+  // 양측 행동이 끝난 후 → current_turn이 바뀌는 시점에서 처리
+  // "turn_count가 짝수일 때 p1 행동 완료, 홀수일 때 p2 행동 완료"로 판단 가능하나
+  // 간단하게: enemySlot이 다음 턴이 되면 이 턴이 하나의 반턴 → 양측 모두 행동 완료 후 독/화상 처리
+  // → turn_count를 통해 짝수번째 행동(=한 라운드 완료) 시 처리
+  // 현재 turn_count가 짝수 → 이번 행동 후 한 라운드 완료 (first_slot 기준 2번 행동)
+  const nextTurnCount = (freshData.turn_count ?? 1) + 1
+  // 독/화상은 양측이 모두 행동한 후 = turn_count가 짝수일 때 적용
+  // (1라운드 = p1 행동 + p2 행동, turn_count는 매 행동마다 +1)
+  if (nextTurnCount % 2 === 0) {
+    // 이번 라운드 종료 시 독/화상 데미지 적용
+    for (const entry of [myEntry, enemyEntry]) {
+      for (const pkmn of entry) {
+        if (pkmn.hp <= 0) continue
+        const dmg = calcPoisonBurnDamage(pkmn)
+        if (dmg > 0) {
+          pkmn.hp = Math.max(0, pkmn.hp - dmg)
+          newLines.push(`${pkmn.name}${josa(pkmn.name, "은는")} ${statusName(pkmn.status)} 때문에 ${dmg} 데미지를 입었다!`)
+          if (pkmn.hp <= 0) newLines.push(`${pkmn.name}${josa(pkmn.name, "은는")} 쓰러졌다!`)
+        }
+      }
+    }
+  }
+
   if (isAllFainted(enemyEntry)) {
     await updateDoc(roomRef, {
-      [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
-      turn_count: (freshData.turn_count ?? 1) + 1,
+      [`${mySlot}_entry`]: myEntry,
+      [`${enemySlot}_entry`]: enemyEntry,
+      turn_count: nextTurnCount,
       game_over: true, winner: myName, current_turn: null
     })
-    // 각 클라이언트가 listenRoom → showGameOver에서 지문 표시
-    // 로그에는 중립 메시지만
     newLines.push(`${myName}의 승리!`)
   } else if (isAllFainted(myEntry)) {
     await updateDoc(roomRef, {
-      [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
-      turn_count: (freshData.turn_count ?? 1) + 1,
+      [`${mySlot}_entry`]: myEntry,
+      [`${enemySlot}_entry`]: enemyEntry,
+      turn_count: nextTurnCount,
       game_over: true, winner: enemyName, current_turn: null
     })
     newLines.push(`${enemyName}의 승리!`)
   } else {
     await updateDoc(roomRef, {
-      [`${mySlot}_entry`]: myEntry, [`${enemySlot}_entry`]: enemyEntry,
+      [`${mySlot}_entry`]: myEntry,
+      [`${enemySlot}_entry`]: enemyEntry,
       current_turn: enemySlot,
-      turn_count: (freshData.turn_count ?? 1) + 1
+      turn_count: nextTurnCount
     })
   }
 
   await addLogs(newLines)
 }
 
-// ── 교체
+// ──────────────────────────────────────────────
+// 교체
+// ──────────────────────────────────────────────
 async function switchPokemon(newIdx) {
   if (isSpectator || !myTurn || actionDone || gameOver) return
   actionDone = true
@@ -670,18 +918,19 @@ async function switchPokemon(newIdx) {
     current_turn: enemySlot,
     turn_count: (data.turn_count ?? 1) + 1
   })
-  // 교체 지문
   await addLogs([
     `돌아와, ${prevName}!`,
     `${myName}${josa(myName, "은는")} ${nextName}${josa(nextName, "을를")} 내보냈다!`
   ])
 }
 
-// ── 턴 UI
+// ──────────────────────────────────────────────
+// 턴 UI
+// ──────────────────────────────────────────────
 function updateTurnUI(data) {
   const el = document.getElementById("turn-display")
   if (el && !isSpectator) {
-    el.innerText  = myTurn ? "내 턴!" : "상대 턴..."
+    el.innerText   = myTurn ? "내 턴!" : "상대 턴..."
     el.style.color = myTurn ? "green" : "gray"
   }
   const tc = document.getElementById("turn-count")
