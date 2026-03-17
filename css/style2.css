@@ -1,7 +1,7 @@
-@import url('https://cdn.jsdelivr.net/gh/MonadABXY/mona-font/web/mona.css');
+@import url('https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css');
 
 *{
-  font-family: 'Mona12';
+  font-family: 'galmuri11';
   letter-spacing: 1px;
   color: #4d4c54;
   text-shadow: 1px 1px 0 #9e9fa4;
