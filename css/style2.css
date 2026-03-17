@@ -1,11 +1,14 @@
-@font-face {
-  font-family: 'MyFont';
-  src: url('./pokemon-dppt.otf') format('opentype');
-}
+@import url('https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css');
 
+@font-face {
+    font-family: 'Galmuri11';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2506-1@1.0/Galmuri11-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-display: swap;
+}
 *{
-  font-family: 'MyFont';
+  font-family: 'Galmuri11';
   letter-spacing: 1px;
-  color: #fff;
+  color: #4d4c54;
   text-shadow: 0.5px 1px 0 #9e9fa4;
 }
