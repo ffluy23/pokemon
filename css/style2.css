@@ -1,6 +1,6 @@
 @font-face {
   font-family: 'MyFont';
-  src: url('pokemon-dppt.woff2') format('woff2');
+  src: url('../pokemon-dppt.woff2') format('woff2');
 }
 
 *{
