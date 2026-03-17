@@ -2,4 +2,6 @@
 
 *{
   font-family: 'Mona12';
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 0 #000;
 }
