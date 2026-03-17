@@ -1,10 +1,5 @@
-@font-face {
-    font-family: 'DosMyungjo';
-    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_eight@1.0/DOSMyungjo.woff') format('woff');
-    font-weight: normal;
-    font-display: swap;
-}
+@import url('https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css');
 
 *{
-  font-family: 'DosMyungjo';
+  font-family: 'Galmuri9';
 }
