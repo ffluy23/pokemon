@@ -1,7 +1,10 @@
-@import url('https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css');
+@font-face {
+  font-family: 'MyFont';
+  src: url('pokemon-dppt.otf.woff2') format('woff2');
+}
 
 *{
-  font-family: 'galmuri11';
+  font-family: 'MyFont';
   letter-spacing: 1px;
   color: #4d4c54;
   text-shadow: 0.5px 1px 0 #9e9fa4;
