@@ -1,3 +1,4 @@
+// moves.js
 // 기술 사전
 // power: 기본 위력
 // type: 기술 타입
