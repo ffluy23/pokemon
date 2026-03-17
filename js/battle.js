@@ -1,3 +1,5 @@
+// battle.js
+
 import { auth, db } from "./firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
 import {
