@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>배틀룸1</title>
+  <link rel="stylesheet" href="css/style2.css">
   <style>
-    <link rel="stylesheet" href="css/style2.css">
     #dice-wrap {
       display: none;
       justify-content: center;
@@ -59,7 +59,6 @@
     #battle-log p { margin: 2px 0; }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
     #leaveBtn { display: none; }
-
     /* HP바 */
     .hp-bar-wrap {
       width: 100%;
@@ -76,6 +75,13 @@
       background: #4caf50;
       border-radius: 4px;
       transition: width 0.4s ease, background-color 0.4s ease;
+    }
+    /* Portrait */
+    .portrait-img {
+      width: 120px;
+      height: 120px;
+      object-fit: contain;
+      display: none;
     }
   </style>
 </head>
@@ -109,9 +115,10 @@
   </div>
   <hr>
 
-  <!-- 상대 포켓몬 (HP바만, 숫자 없음) -->
+  <!-- 상대 포켓몬 -->
   <div>
     <h3>상대 포켓몬</h3>
+    <img id="enemy-portrait" class="portrait-img" alt="" />
     <p id="enemy-active-name">-</p>
     <div class="hp-bar-wrap">
       <div class="hp-bar" id="enemy-hp-bar"></div>
@@ -120,9 +127,10 @@
   </div>
   <hr>
 
-  <!-- 내 포켓몬 (HP바 + 숫자) -->
+  <!-- 내 포켓몬 -->
   <div>
     <h3>내 포켓몬</h3>
+    <img id="my-portrait" class="portrait-img" alt="" />
     <p id="my-active-name">-</p>
     <div class="hp-bar-wrap">
       <div class="hp-bar" id="my-hp-bar"></div>
