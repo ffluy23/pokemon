@@ -1,5 +1,4 @@
 // intro.js
-// 터치 대기 → BGM 시작 (크롬 자동재생 우회) → VS 인트로 인라인 재생 → 배틀 시작
 
 import { auth, db } from "./firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
@@ -69,13 +68,14 @@ function bindTouch() {
 }
 
 async function onTouched() {
-  // 터치 이벤트 컨텍스트 안에서 play() → 크롬 자동재생 정책 우회
+  // 터치 컨텍스트 안에서 BGM 재생 → 크롬 자동재생 정책 우회
   const chosen = BGM_LIST[Math.floor(Math.random() * BGM_LIST.length)]
   bgmAudio = new Audio(chosen)
   bgmAudio.loop   = true
   bgmAudio.volume = 0.7
   bgmAudio.play().catch(() => {})
 
+  // Firestore에 내 ready 마킹
   const snap  = await getDoc(roomRef)
   const room  = snap.data()
   const field = room?.player1_uid === myUid ? "intro_ready_p1" : "intro_ready_p2"
@@ -90,24 +90,31 @@ function listenReady() {
     const r1 = !!room.intro_ready_p1
     const r2 = !!room.intro_ready_p2
 
-    if (!r1 && !r2)      readyStatus.innerText = ""
+    // 상태 텍스트
+    if      (!r1 && !r2) readyStatus.innerText = ""
     else if (!r1 || !r2) readyStatus.innerText = "상대방을 기다리는 중..."
 
+    // 둘 다 ready → VS 인트로 재생 (각 클라이언트에서 독립 실행)
     if (r1 && r2 && !introStarted) {
       introStarted = true
-      await playVsIntro(room)
+      playVsIntro(room)
     }
   })
 }
 
 async function playVsIntro(room) {
+  // 이름 세팅
   const p1 = (room.player1_name ?? "PLAYER1").toUpperCase()
   const p2 = (room.player2_name ?? "PLAYER2").toUpperCase()
   document.getElementById("vs-name-left").textContent  = p1
   document.getElementById("vs-name-right").textContent = p2
 
+  // 터치 화면 숨기고 VS 인트로 표시
   touchScreen.style.display = "none"
   vsIntro.classList.add("show")
+
+  // ── 한 프레임 기다린 뒤 애니메이션 시작 (display:none → block 직후 바로 class 추가하면 transition 무시됨)
+  await wait(50)
 
   const flash      = document.getElementById("vs-flash")
   const burst      = document.getElementById("vs-burst")
@@ -117,7 +124,9 @@ async function playVsIntro(room) {
   const innerLeft  = document.getElementById("vs-inner-left")
   const innerRight = document.getElementById("vs-inner-right")
 
+  // 원본 intro.html 타이밍 그대로
   flash.classList.add("show")
+
   await wait(100); vsLeft.classList.add("show")
   await wait(100); vsRight.classList.add("show")
   await wait(250)
@@ -131,6 +140,7 @@ async function playVsIntro(room) {
   innerLeft.classList.add("drift-left")
   innerRight.classList.add("drift-right")
 
+  // 5초 후 배틀로 전환
   await wait(5000)
   endIntro()
 }
