@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>배틀룸1</title>
-  <link rel="stylesheet" href="css/style2.css">
+  <title>배틀룸 1</title>
+  <link rel="stylesheet" href="../css/style.css">
   <style>
+    /* battleroom1.html */
     /* ══ 인트로 오버레이 ══ */
     #intro-overlay {
       position: fixed; inset: 0; z-index: 1000;
@@ -65,11 +66,12 @@
     }
 
     .vs-slide {
-      position: absolute; width: 100%; height: 100%;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 clamp(10px,5vw,80px);
-    }
-    .vs-left, .vs-right { width: 45%; color: white; opacity: 0; }
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 clamp(10px,5vw,80px);
+  box-sizing: border-box;
+}
+    .vs-left, .vs-right { width: 42%; color: white; opacity: 0; }
     .vs-left  { transform: translateX(-150%) scale(1.2); text-align: left; }
     .vs-right { transform: translateX( 150%) scale(1.2); text-align: right; }
     .vs-left.show  { animation: slideLeft  .4s cubic-bezier(.2,1.2,.3,1) forwards; }
