@@ -21,6 +21,7 @@ const logsRef = collection(db, "rooms", ROOM_ID, "logs")
 let mySlot   = null, myUid  = null, myTurn = false
 let gameStarted = false, diceShown = false, actionDone = false, gameOver = false
 let battleIntroSequenceStarted = false
+let lastHitEventTs = 0   // 중복 깜빡임 방지
 
 const isSpectator = new URLSearchParams(location.search).get("spectator") === "true"
 
@@ -117,6 +118,7 @@ function triggerBlink(prefix) {
   })
 }
 
+// ── 로그 타이핑
 let renderedLogIds = new Set(), typingQueue = [], isTyping = false
 
 function processQueue() {
@@ -214,7 +216,6 @@ async function initTurn(data) {
 async function runBattleIntroSequence(data) {
   const p1Name = data.player1_name, p2Name = data.player2_name
   const enemySlot = mySlot === "p1" ? "p2" : "p1"
-
   await addLog(`${p1Name}${josa(p1Name, "과와")} ${p2Name}의 승부가 시작됐다!`)
   await wait(3000)
   await addLogs([
@@ -239,6 +240,13 @@ function listenRoom() {
     if (!data.p1_entry || !data.p2_entry) return
     const enemySlot = mySlot === "p1" ? "p2" : "p1"
     updateActiveUI(mySlot, data, "my"); updateActiveUI(enemySlot, data, "enemy")
+
+    // ── hit_event 감지 → 양쪽 화면에서 깜빡임
+    if (data.hit_event && data.hit_event.ts > lastHitEventTs) {
+      lastHitEventTs = data.hit_event.ts
+      const defPrefix = data.hit_event.defender === mySlot ? "my" : "enemy"
+      triggerBlink(defPrefix)
+    }
 
     if (data.game_over) { showGameOver(data); return }
 
@@ -303,7 +311,8 @@ async function leaveGame() {
     current_turn: null, turn_count: 0, p1_entry: null, p2_entry: null,
     p1_active_idx: 0, p2_active_idx: 0, p1_dice: null, p2_dice: null,
     first_slot: null, first_pokemon_name: null, intro_done: false,
-    intro_ready_p1: false, intro_ready_p2: false
+    intro_ready_p1: false, intro_ready_p2: false,
+    hit_event: null
   })
   location.href = "../main.html"
 }
@@ -361,7 +370,6 @@ async function switchPokemon(newIdx) {
   const myEntry = data[`${mySlot}_entry`]
   const myName = mySlot === "p1" ? data.player1_name : data.player2_name
   const prev = myEntry[data[`${mySlot}_active_idx`]].name, next = myEntry[newIdx].name
-
   await addLog(`돌아와, ${prev}!`); await wait(400)
   await addLog(`${myName}${josa(myName, "은는")} ${next}${josa(next, "을를")} 내보냈다!`); await wait(200)
   await updateDoc(roomRef, { [`${mySlot}_active_idx`]: newIdx, current_turn: enemySlot, turn_count: (data.turn_count ?? 1) + 1 })
@@ -408,7 +416,6 @@ async function useMove(moveIdx, data) {
   myPokemon.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
   const moveInfo = moves[moveData.name]
 
-  // 1) 기술 지문
   await addLog(`${myPokemon.name}의 ${moveData.name}!`); await wait(300)
 
   if (moveInfo?.rank) {
@@ -439,7 +446,6 @@ async function useMove(moveIdx, data) {
   const atkRank = getActiveRank(myPokemon, "atk"), defRankEne = getActiveRank(enePokemon, "def")
   const expiredMsgs = tickMyRanks(myPokemon)
 
-  // 2) 공격 이펙트
   await triggerAttackEffect("my", "enemy")
 
   const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon)
@@ -450,13 +456,16 @@ async function useMove(moveIdx, data) {
     if (multiplier === 0) {
       await addLog(`${enePokemon.name}에게는 효과가 없다…`)
     } else {
-      // 3) 깜빡임
-      await triggerBlink("enemy")
-      // 4) HP 감소
+      // ── hit_event Firestore에 기록 → 양쪽 화면에서 깜빡임 트리거
+      await updateDoc(roomRef, { hit_event: { defender: enemySlot, ts: Date.now() } })
+      await triggerBlink("enemy")  // 공격자 화면은 로컬로도 즉시 실행
+      // 공격자(p1 or p2 중 행동한 쪽)가 이벤트 정리
+      await updateDoc(roomRef, { hit_event: null })
+
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
       updateHpBar("enemy-hp-bar", "enemy-active-hp", enePokemon.hp, enePokemon.maxHp, false)
       await wait(500)
-      // 5) 결과 로그
+
       if (multiplier > 1) { await addLog("효과가 굉장했다!"); await wait(280) }
       if (multiplier < 1) { await addLog("효과가 별로인 듯하다…"); await wait(280) }
       if (critical)       { await addLog("급소에 맞았다!"); await wait(280) }
