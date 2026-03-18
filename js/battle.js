@@ -21,7 +21,7 @@ const logsRef = collection(db, "rooms", ROOM_ID, "logs")
 let mySlot   = null, myUid  = null, myTurn = false
 let gameStarted = false, diceShown = false, actionDone = false, gameOver = false
 let battleIntroSequenceStarted = false
-let lastHitEventTs = 0   // 중복 깜빡임 방지
+let lastHitEventTs = 0   // ← 추가: 중복 깜빡임 방지
 
 const isSpectator = new URLSearchParams(location.search).get("spectator") === "true"
 
@@ -118,7 +118,6 @@ function triggerBlink(prefix) {
   })
 }
 
-// ── 로그 타이핑
 let renderedLogIds = new Set(), typingQueue = [], isTyping = false
 
 function processQueue() {
@@ -241,7 +240,7 @@ function listenRoom() {
     const enemySlot = mySlot === "p1" ? "p2" : "p1"
     updateActiveUI(mySlot, data, "my"); updateActiveUI(enemySlot, data, "enemy")
 
-    // ── hit_event 감지 → 양쪽 화면에서 깜빡임
+    // ── 추가: hit_event 감지 → 피격자 화면에서 깜빡임
     if (data.hit_event && data.hit_event.ts > lastHitEventTs) {
       lastHitEventTs = data.hit_event.ts
       const defPrefix = data.hit_event.defender === mySlot ? "my" : "enemy"
@@ -456,11 +455,11 @@ async function useMove(moveIdx, data) {
     if (multiplier === 0) {
       await addLog(`${enePokemon.name}에게는 효과가 없다…`)
     } else {
-      // ── hit_event Firestore에 기록 → 양쪽 화면에서 깜빡임 트리거
-      await updateDoc(roomRef, { hit_event: { defender: enemySlot, ts: Date.now() } })
-      await triggerBlink("enemy")  // 공격자 화면은 로컬로도 즉시 실행
-      // 공격자(p1 or p2 중 행동한 쪽)가 이벤트 정리
-      await updateDoc(roomRef, { hit_event: null })
+      // ── 추가: hit_event 기록 → 상대 화면에서도 깜빡임 트리거
+      const hitTs = Date.now()
+      await updateDoc(roomRef, { hit_event: { defender: enemySlot, ts: hitTs } })
+      await triggerBlink("enemy")   // 공격자 화면은 로컬로 즉시
+      await updateDoc(roomRef, { hit_event: null })   // 이벤트 정리
 
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
       updateHpBar("enemy-hp-bar", "enemy-active-hp", enePokemon.hp, enePokemon.maxHp, false)
