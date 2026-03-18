@@ -29,8 +29,11 @@ export function fadeBgmOut(duration = 2000) {
 const overlay     = document.getElementById("intro-overlay")
 const touchScreen = document.getElementById("touch-screen")
 const readyStatus = document.getElementById("touch-ready-status")
-const vsScreen    = document.getElementById("vs-screen")       // ← vs-screen
+const vsScreen    = document.getElementById("vs-screen")
 const roomRef     = doc(db, "rooms", ROOM_ID)
+
+// URL 파라미터로 관전자 판별 — Firestore 상태에 의존하지 않음
+const isSpectatorParam = new URLSearchParams(location.search).get("spectator") === "true"
 
 let myUid     = null
 let touched   = false
@@ -43,15 +46,13 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) return
   myUid = user.uid
 
-  const roomSnap = await getDoc(roomRef)
-  const room = roomSnap.data()
-  const isPlayer = room?.player1_uid === myUid || room?.player2_uid === myUid
-
-  if (!isPlayer) {
+  // 관전자면 인트로 스킵
+  if (isSpectatorParam) {
     skipIntro()
     return
   }
 
+  // 플레이어는 Firestore 상태 무관하게 항상 인트로 표시
   bindTouch()
   listenReady()
 })
@@ -76,7 +77,7 @@ async function onTouched() {
   bgmAudio.volume = 0.7
   bgmAudio.play().catch(() => {})
 
-  // VS 인트로 즉시 재생 (await 없이 — BGM이랑 동시에)
+  // VS 인트로 즉시 재생
   const snap = await getDoc(roomRef)
   const room = snap.data()
   playVsIntro(room)
@@ -98,13 +99,12 @@ function listenReady() {
     if (!r1 && !r2)      readyStatus.innerText = ""
     else if (!r1 || !r2) readyStatus.innerText = "상대방을 기다리는 중..."
 
-    // 인트로 연출이 끝난 뒤 상대 ready 도착 시 배틀 시작
+    // 인트로 연출이 끝난 뒤 상대방 ready 도착 시 배틀 시작
     if (bothReady && introDone) startBattle()
   })
 }
 
 async function playVsIntro(room) {
-  // 이름 세팅
   document.getElementById("vs-name-left").textContent  = (room.player1_name ?? "PLAYER1").toUpperCase()
   document.getElementById("vs-name-right").textContent = (room.player2_name ?? "PLAYER2").toUpperCase()
 
@@ -118,7 +118,7 @@ async function playVsIntro(room) {
   const burst      = document.getElementById("vs-burst")
   const vsLeft     = document.getElementById("vs-left")
   const vsRight    = document.getElementById("vs-right")
-  const vsLabel    = document.getElementById("vs-label")     // ← vs-label
+  const vsLabel    = document.getElementById("vs-label")
   const innerLeft  = document.getElementById("vs-inner-left")
   const innerRight = document.getElementById("vs-inner-right")
 
@@ -126,12 +126,10 @@ async function playVsIntro(room) {
   await wait(100); vsLeft.classList.add("show")
   await wait(100); vsRight.classList.add("show")
   await wait(250)
-
-  vsLabel.classList.add("show")                              // ← vs-label
+  vsLabel.classList.add("show")
   flash.classList.add("show")
   burst.classList.add("show")
   vsScreen.classList.add("vs-shake")
-
   await wait(450)
   innerLeft.classList.add("drift-left")
   innerRight.classList.add("drift-right")
