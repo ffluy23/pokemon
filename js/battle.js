@@ -7,6 +7,12 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 import { moves } from "./moves.js"
 import { getTypeMultiplier } from "./typeChart.js"
+import {
+  statusName, josa as josaEH,
+  applyMoveEffect, checkPreActionStatus, checkConfusion,
+  applyEndOfTurnDamage, applyWeatherEffect,
+  getStatusSpdPenalty
+} from "./effecthandler.js"
 
 const roomRef = doc(db, "rooms", ROOM_ID)
 const logsRef = collection(db, "rooms", ROOM_ID, "logs")
@@ -61,13 +67,12 @@ function isAllFainted(entry) {
 // ──────────────────────────────────────────────
 // 랭크 시스템
 // ranks = {
-//   atk: 0, atkTurns: 0,   // 공격 랭크 (최대 +4, 최솟값 0)
-//   def: 0, defTurns: 0,   // 방어 랭크 (최대 +3)
-//   spd: 0, spdTurns: 0,   // 스피드 랭크 (최대 +5%p)
+//   atk: 0, atkTurns: 0,
+//   def: 0, defTurns: 0,
+//   spd: 0, spdTurns: 0,
 // }
-// atkTurns/defTurns/spdTurns: 남은 지속 턴 수
-//   기술 사용 턴 포함 2턴 → 사용 직후 2로 세팅
-//   해당 포켓몬이 행동할 때마다 1씩 차감 → 0이 되면 만료
+// 모든 랭크는 2턴 유지 (피격 무관)
+// 자기 행동 시작 시 자기 랭크 차감
 // ──────────────────────────────────────────────
 
 function defaultRanks() {
@@ -80,27 +85,35 @@ function getActiveRank(pokemon, key) {
   return (r[`${key}Turns`] ?? 0) > 0 ? (r[key] ?? 0) : 0
 }
 
-// 공격 측 턴 소모 (내 행동 시작 시 내 랭크 차감)
+// 자기 행동 시작 시 자기 랭크 차감 (atk/def/spd 전부)
+// 만료된 랭크는 메시지 반환
 function tickMyRanks(pokemon) {
-  if (!pokemon.ranks) return
+  if (!pokemon.ranks) return []
   const r = pokemon.ranks
-  if (r.atkTurns > 0) { r.atkTurns--; if (r.atkTurns === 0) r.atk = 0 }
-  if (r.spdTurns > 0) { r.spdTurns--; if (r.spdTurns === 0) r.spd = 0 }
-  // defTurns는 피격 시 만료이므로 여기서 차감 안 함
-}
+  const expiredMsgs = []
 
-// 피격 시 수비측 방어 랭크 만료
-function expireDefRank(pokemon) {
-  if (!pokemon.ranks) return
-  pokemon.ranks.defTurns = 0
-  pokemon.ranks.def = 0
-}
-
-// 수비측 스피드 랭크 차감 (회피 판정 이후)
-function tickEnemySpdRank(pokemon) {
-  if (!pokemon.ranks) return
-  const r = pokemon.ranks
-  if (r.spdTurns > 0) { r.spdTurns--; if (r.spdTurns === 0) r.spd = 0 }
+  if (r.atkTurns > 0) {
+    r.atkTurns--
+    if (r.atkTurns === 0) {
+      r.atk = 0
+      expiredMsgs.push(`${pokemon.name}의 공격 랭크가 원래대로 돌아왔다!`)
+    }
+  }
+  if (r.defTurns > 0) {
+    r.defTurns--
+    if (r.defTurns === 0) {
+      r.def = 0
+      expiredMsgs.push(`${pokemon.name}의 방어 랭크가 원래대로 돌아왔다!`)
+    }
+  }
+  if (r.spdTurns > 0) {
+    r.spdTurns--
+    if (r.spdTurns === 0) {
+      r.spd = 0
+      expiredMsgs.push(`${pokemon.name}의 스피드 랭크가 원래대로 돌아왔다!`)
+    }
+  }
+  return expiredMsgs
 }
 
 // ──────────────────────────────────────────────
@@ -117,22 +130,15 @@ function calcHit(attacker, moveInfo, defender) {
 
   if (moveInfo.alwaysHit) return { hit: true, hitType: "hit" }
 
-  // 마비로 인한 스피드 감소 반영 (-1)
-  const atkSpdPenalty = attacker.status === "paralysis" ? 1 : 0
-  const defSpdPenalty = defender.status === "paralysis" ? 1 : 0
-
-  // 얼음으로 인한 스피드 감소 반영 (-3)
-  const atkIcePenalty = attacker.status === "frozen" ? 3 : 0
-  const defIcePenalty = defender.status === "frozen" ? 3 : 0
-
-  const atkSpd = Math.max(1, (attacker.speed ?? 3) - atkSpdPenalty - atkIcePenalty)
-  const defSpd = Math.max(1, (defender.speed ?? 3) - defSpdPenalty - defIcePenalty)
+  // 상태이상에 따른 스피드 패널티 (effecthandler)
+  const atkSpd = Math.max(1, (attacker.speed ?? 3) - getStatusSpdPenalty(attacker))
+  const defSpd = Math.max(1, (defender.speed ?? 3) - getStatusSpdPenalty(defender))
 
   // 2단계: 회피율
   const spdDiff = defSpd - atkSpd
   const baseEvasion = Math.max(0, 5 * spdDiff)
   const defSpdRankBonus = Math.max(0, getActiveRank(defender, "spd"))
-  const evasion = Math.min(99, baseEvasion + defSpdRankBonus) // 최대 99%로 제한
+  const evasion = Math.min(99, baseEvasion + defSpdRankBonus)
 
   const evasionRoll = Math.random() * 100
   if (evasionRoll < evasion) {
@@ -166,20 +172,14 @@ function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
   const base = (move.power ?? 40) + (attacker.attack ?? 3) * 4 + dice
   const raw = Math.floor(base * multiplier * stabMult)
 
-  // 공격 랭크: 자속보정 이후 정수로 ±, 최솟값 0
-  const clampedAtkRank = Math.max(-raw, atkRank) // 음수로 떨어지지 않도록
+  const clampedAtkRank = Math.max(-raw, atkRank)
   const afterAtk = Math.max(0, raw + clampedAtkRank)
 
-  // 방어 감소
-  const defReduction = (attacker.defense ?? 3) * 5  // 사용하는 쪽이 아니라 수비 측 방어력
-  // 오타 수정: defender.defense 사용
   const afterDef = Math.max(0, afterAtk - (defender.defense ?? 3) * 5)
 
-  // 방어 랭크: 최대 +3, 피해 = afterDef - (defRank × 3), 최솟값 0
   const defRankReduction = Math.min(3, Math.max(0, defRank)) * 3
   const baseDamage = Math.max(0, afterDef - defRankReduction)
 
-  // 급소: 공격력×2% 확률, 급소는 공격 랭크 포함 피해에 ×1.5 (급소율에 공격 랭크 영향 없음)
   const critChance = Math.min(100, (attacker.attack ?? 3) * 2)
   const critical = Math.random() * 100 < critChance
   const damage = critical ? Math.floor(baseDamage * 1.5) : baseDamage
@@ -188,65 +188,9 @@ function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
 }
 
 // ──────────────────────────────────────────────
-// 상태이상 처리
+// 조사 처리 유틸 (effecthandler.js의 josa 위임)
 // ──────────────────────────────────────────────
-
-// 마비: 25% 확률로 행동 불가
-function checkParalysis(pokemon) {
-  if (pokemon.status !== "paralysis") return false
-  return Math.random() < 0.25
-}
-
-// 얼음: 20% 확률로 해제
-function checkFreeze(pokemon) {
-  if (pokemon.status !== "frozen") return false
-  return Math.random() < 0.20
-}
-
-// 턴 종료 시 독/화상 데미지 (최대 HP의 1/16, 소수점 버림, 최소 1)
-function calcPoisonBurnDamage(pokemon) {
-  if (pokemon.status !== "poison" && pokemon.status !== "burn") return 0
-  return Math.max(1, Math.floor((pokemon.maxHp ?? pokemon.hp) / 16))
-}
-
-// 상태이상 한글명
-function statusName(status) {
-  const map = { poison: "독", burn: "화상", paralysis: "마비", frozen: "얼음" }
-  return map[status] ?? status
-}
-
-// ──────────────────────────────────────────────
-// 상태변화 처리
-// ──────────────────────────────────────────────
-
-// 혼란: 33.3% 확률로 자해 (공격력×2 고정 위력)
-function checkConfusion(pokemon) {
-  if (!(pokemon.confusion ?? 0)) return { triggered: false }
-  return { triggered: Math.random() < 1 / 3 }
-}
-
-function calcConfusionDamage(pokemon) {
-  return (pokemon.attack ?? 3) * 2
-}
-
-// 혼란 지속 턴 차감 (매 행동 시작 시)
-function tickConfusion(pokemon) {
-  if (!(pokemon.confusion ?? 0)) return
-  pokemon.confusion--
-}
-
-// 풀죽음: 1턴 지속, 행동 불가
-function checkFlinch(pokemon) {
-  return !!(pokemon.flinch)
-}
-
-function clearFlinch(pokemon) {
-  pokemon.flinch = false
-}
-
-// ──────────────────────────────────────────────
-// HP바 업데이트
-// ──────────────────────────────────────────────
+function josa(word, type) { return josaEH(word, type) }
 function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
   const bar = document.getElementById(barId)
   const text = textId ? document.getElementById(textId) : null
@@ -321,24 +265,6 @@ function listenLogs() {
     })
     processQueue()
   })
-}
-
-// ──────────────────────────────────────────────
-// 조사 처리 유틸
-// ──────────────────────────────────────────────
-function josa(word, type) {
-  if (!word) return type === "은는" ? "은" : type === "이가" ? "이" : type === "을를" ? "을" : type === "과와" ? "과" : "으로"
-  const code = word.charCodeAt(word.length - 1)
-  if (code < 0xAC00 || code > 0xD7A3) {
-    return type === "은는" ? "은" : type === "이가" ? "이" : type === "을를" ? "을" : type === "과와" ? "과" : "으로"
-  }
-  const hasFinal = (code - 0xAC00) % 28 !== 0
-  if (type === "은는") return hasFinal ? "은" : "는"
-  if (type === "이가") return hasFinal ? "이" : "가"
-  if (type === "을를") return hasFinal ? "을" : "를"
-  if (type === "과와") return hasFinal ? "과" : "와"
-  if (type === "으로") return hasFinal ? "으로" : "로"
-  return ""
 }
 
 // ──────────────────────────────────────────────
@@ -553,7 +479,6 @@ function updateActiveUI(slot, data, prefix) {
   const pokemon   = data[`${slot}_entry`][activeIdx]
   if (!pokemon) return
 
-  // 상태이상 표기
   const statusTag = pokemon.status ? ` [${statusName(pokemon.status)}]` : ""
   const confusionTag = (pokemon.confusion ?? 0) > 0 ? " [혼란]" : ""
   document.getElementById(`${prefix}-active-name`).innerText = pokemon.name + statusTag + confusionTag
@@ -662,12 +587,15 @@ async function useMove(moveIdx, data) {
   const moveData = myPokemon.moves[moveIdx]
   if (!moveData || moveData.pp <= 0) { actionDone = false; return }
 
+  const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
+  const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
+
   const newLines = []
 
-  // ── 풀죽음 체크 (행동 불가)
-  if (checkFlinch(myPokemon)) {
-    clearFlinch(myPokemon)
-    newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 풀이 죽어서 움직일 수 없다!`)
+  // ── 행동 전 상태이상/풀죽음 체크 (effecthandler)
+  const preAction = checkPreActionStatus(myPokemon)
+  newLines.push(...preAction.msgs)
+  if (preAction.blocked) {
     await updateDoc(roomRef, {
       [`${mySlot}_entry`]: myEntry,
       current_turn: enemySlot,
@@ -677,64 +605,27 @@ async function useMove(moveIdx, data) {
     return
   }
 
-  // ── 마비 행동불가 체크 (25%)
-  if (checkParalysis(myPokemon)) {
-    newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 마비 때문에 움직일 수 없다!`)
-    await updateDoc(roomRef, {
-      [`${mySlot}_entry`]: myEntry,
-      current_turn: enemySlot,
-      turn_count: (freshData.turn_count ?? 1) + 1
-    })
-    await addLogs(newLines)
-    return
-  }
-
-  // ── 얼음 해제 체크 (20%)
-  if (myPokemon.status === "frozen") {
-    if (checkFreeze(myPokemon)) {
-      myPokemon.status = null
-      newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 얼음 상태에서 회복됐다!`)
-      // 해제됐으면 이번 턴은 행동 불가
+  // ── 혼란 체크 (effecthandler)
+  const confResult = checkConfusion(myPokemon)
+  newLines.push(...confResult.msgs)
+  if (confResult.selfHit) {
+    if (isAllFainted(myEntry)) {
       await updateDoc(roomRef, {
         [`${mySlot}_entry`]: myEntry,
-        current_turn: enemySlot,
-        turn_count: (freshData.turn_count ?? 1) + 1
+        turn_count: (freshData.turn_count ?? 1) + 1,
+        game_over: true, winner: enemyName, current_turn: null
       })
-      await addLogs(newLines)
-      return
+      newLines.push(`${enemyName}의 승리!`)
     } else {
-      newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 꽁꽁 얼어서 움직일 수 없다!`)
       await updateDoc(roomRef, {
         [`${mySlot}_entry`]: myEntry,
         current_turn: enemySlot,
         turn_count: (freshData.turn_count ?? 1) + 1
       })
-      await addLogs(newLines)
-      return
     }
+    await addLogs(newLines)
+    return
   }
-
-  // ── 혼란 체크 (33.3%)
-  tickConfusion(myPokemon)
-  if ((myPokemon.confusion ?? 0) > 0) {
-    const { triggered } = checkConfusion(myPokemon)
-    if (triggered) {
-      const selfDmg = calcConfusionDamage(myPokemon)
-      myPokemon.hp = Math.max(0, myPokemon.hp - selfDmg)
-      newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 혼란으로 자기 자신을 공격했다! (${selfDmg} 데미지)`)
-      if (myPokemon.hp <= 0) {
-        newLines.push(`${myPokemon.name}${josa(myPokemon.name, "은는")} 쓰러졌다!`)
-      }
-      await updateDoc(roomRef, {
-        [`${mySlot}_entry`]: myEntry,
-        current_turn: enemySlot,
-        turn_count: (freshData.turn_count ?? 1) + 1
-      })
-      await addLogs(newLines)
-      return
-    }
-  }
-  if ((myPokemon.confusion ?? 0) <= 0) myPokemon.confusion = 0
 
   // ── PP 차감
   myPokemon.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
@@ -744,8 +635,7 @@ async function useMove(moveIdx, data) {
   // 공격 지문
   newLines.push(`${myPokemon.name}의 ${moveData.name}!`)
 
-  // ── 랭크 기술 처리 (업/다운 통합)
-  // rank 필드: { atk, def, spd } → 양수면 랭크업(자신), 음수면 랭크다운(상대)
+  // ── 랭크 기술 처리
   if (moveInfo?.rank) {
     const r = moveInfo.rank
     const myRanks  = { ...defaultRanks(), ...(myPokemon.ranks ?? {}) }
@@ -754,17 +644,19 @@ async function useMove(moveIdx, data) {
     // 공격 랭크
     if (r.atk !== undefined) {
       if (r.atk > 0) {
-        // 랭크업: 자신에게 적용
         const prev = myRanks.atk
         myRanks.atk = Math.min(4, myRanks.atk + r.atk)
         myRanks.atkTurns = 2
         newLines.push(`${myPokemon.name}의 공격이 올라갔다! (공격 랭크 +${myRanks.atk - prev})`)
       } else {
-        // 랭크다운: 상대에게 적용, 최솟값 0
-        const prev = eneRanks.atk
-        eneRanks.atk = Math.max(0, eneRanks.atk + r.atk) // r.atk가 음수
-        eneRanks.atkTurns = 2
-        newLines.push(`${enePokemon.name}의 공격이 내려갔다! (공격 랭크 ${myRanks.atk - prev})`)
+        if (eneRanks.atk === 0) {
+          newLines.push(`${enePokemon.name}의 공격은 더 이상 내려가지 않는다!`)
+        } else {
+          const prev = eneRanks.atk
+          eneRanks.atk = Math.max(0, eneRanks.atk + r.atk)
+          eneRanks.atkTurns = 2
+          newLines.push(`${enePokemon.name}의 공격이 내려갔다! (공격 랭크 ${eneRanks.atk - prev})`)
+        }
       }
     }
 
@@ -776,10 +668,14 @@ async function useMove(moveIdx, data) {
         myRanks.defTurns = 2
         newLines.push(`${myPokemon.name}의 방어가 올라갔다! (방어 랭크 +${myRanks.def - prev})`)
       } else {
-        const prev = eneRanks.def
-        eneRanks.def = Math.max(0, eneRanks.def + r.def)
-        eneRanks.defTurns = 2
-        newLines.push(`${enePokemon.name}의 방어가 내려갔다! (방어 랭크 ${eneRanks.def - prev})`)
+        if (eneRanks.def === 0) {
+          newLines.push(`${enePokemon.name}의 방어는 더 이상 내려가지 않는다!`)
+        } else {
+          const prev = eneRanks.def
+          eneRanks.def = Math.max(0, eneRanks.def + r.def)
+          eneRanks.defTurns = 2
+          newLines.push(`${enePokemon.name}의 방어가 내려갔다! (방어 랭크 ${eneRanks.def - prev})`)
+        }
       }
     }
 
@@ -791,15 +687,23 @@ async function useMove(moveIdx, data) {
         myRanks.spdTurns = 2
         newLines.push(`${myPokemon.name}의 스피드가 올라갔다! (스피드 랭크 +${myRanks.spd - prev}%p)`)
       } else {
-        const prev = eneRanks.spd
-        eneRanks.spd = Math.max(0, eneRanks.spd + r.spd)
-        eneRanks.spdTurns = 2
-        newLines.push(`${enePokemon.name}의 스피드가 내려갔다! (스피드 랭크 ${eneRanks.spd - prev}%p)`)
+        if (eneRanks.spd === 0) {
+          newLines.push(`${enePokemon.name}의 스피드는 더 이상 내려가지 않는다!`)
+        } else {
+          const prev = eneRanks.spd
+          eneRanks.spd = Math.max(0, eneRanks.spd + r.spd)
+          eneRanks.spdTurns = 2
+          newLines.push(`${enePokemon.name}의 스피드가 내려갔다! (스피드 랭크 ${eneRanks.spd - prev}%p)`)
+        }
       }
     }
 
     myPokemon.ranks  = myRanks
     enePokemon.ranks = eneRanks
+
+    // 랭크 기술도 행동이므로 자기 랭크 차감
+    const myRankExpiredMsgs = tickMyRanks(myPokemon)
+    newLines.push(...myRankExpiredMsgs)
 
     await updateDoc(roomRef, {
       [`${mySlot}_entry`]: myEntry,
@@ -811,18 +715,15 @@ async function useMove(moveIdx, data) {
     return
   }
 
-  // ── 현재 유효한 랭크 값 읽기
+  // ── 현재 유효한 랭크 값 읽기 (tick 전에 읽어야 이번 턴에 적용됨)
   const atkRank    = getActiveRank(myPokemon, "atk")
   const defRankEne = getActiveRank(enePokemon, "def")
 
-  // ── 내 공격/스피드 랭크 차감 (이번 행동 소모)
-  tickMyRanks(myPokemon)
+  // ── 내 랭크 차감 (행동 시작 시 자기 랭크 소모)
+  const myRankExpiredMsgs = tickMyRanks(myPokemon)
 
   // ── 명중 판정
   const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon)
-
-  // ── 수비측 스피드 랭크 차감 (회피 판정 이후)
-  tickEnemySpdRank(enePokemon)
 
   if (!hit) {
     if (hitType === "evaded") {
@@ -844,70 +745,65 @@ async function useMove(moveIdx, data) {
 
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
 
-      // ── 부가효과 처리 (moves.js effect 구조 기준)
-      const effect = moveInfo?.effect
-      if (effect && enePokemon.hp > 0) {
-        const roll = Math.random()
-
-        // 상태이상 부여 (상대에게 이미 상태이상 없을 때만)
-        if (effect.status && roll < effect.chance && !enePokemon.status) {
-          enePokemon.status = effect.status
-          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} ${statusName(effect.status)} 상태가 됐다!`)
-        }
-
-        // 혼란 부여
-        if (effect.volatile === "혼란" && roll < effect.chance && !(enePokemon.confusion ?? 0)) {
-          enePokemon.confusion = Math.floor(Math.random() * 3) + 1 // 1~3턴
-          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 혼란에 빠졌다!`)
-        }
-
-        // 풀죽음 부여
-        if (effect.volatile === "풀죽음" && roll < effect.chance) {
-          enePokemon.flinch = true
-          newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 풀이 죽었다!`)
-        }
-      }
+      // ── 부가효과 처리 (effecthandler)
+      const effectMsgs = applyMoveEffect(moveInfo?.effect, myPokemon, enePokemon)
+      newLines.push(...effectMsgs)
 
       if (enePokemon.hp <= 0) newLines.push(`${enePokemon.name}${josa(enePokemon.name, "은는")} 쓰러졌다!`)
-
-      // 피격 시 수비측 방어 랭크 만료
-      expireDefRank(enePokemon)
     }
   }
 
-  const myName    = mySlot === "p1" ? freshData.player1_name : freshData.player2_name
-  const enemyName = enemySlot === "p1" ? freshData.player1_name : freshData.player2_name
+  // ── 날씨 기술 처리 (effecthandler)
+  const weatherResult = applyWeatherEffect(moveInfo?.effect)
+  if (weatherResult.weather) {
+    newLines.push(...weatherResult.msgs)
+    // weather 필드는 room에 저장 (updateDoc 시 포함)
+  }
 
-  // ── 턴 종료 처리 (독/화상 데미지, 게임 종료 체크)
-  // 양측 행동이 끝난 후 → current_turn이 바뀌는 시점에서 처리
-  // "turn_count가 짝수일 때 p1 행동 완료, 홀수일 때 p2 행동 완료"로 판단 가능하나
-  // 간단하게: enemySlot이 다음 턴이 되면 이 턴이 하나의 반턴 → 양측 모두 행동 완료 후 독/화상 처리
-  // → turn_count를 통해 짝수번째 행동(=한 라운드 완료) 시 처리
-  // 현재 turn_count가 짝수 → 이번 행동 후 한 라운드 완료 (first_slot 기준 2번 행동)
+  // ── 턴 종료 처리 (독/화상 데미지, effecthandler)
   const nextTurnCount = (freshData.turn_count ?? 1) + 1
-  // 독/화상은 양측이 모두 행동한 후 = turn_count가 짝수일 때 적용
-  // (1라운드 = p1 행동 + p2 행동, turn_count는 매 행동마다 +1)
   if (nextTurnCount % 2 === 0) {
-    // 이번 라운드 종료 시 독/화상 데미지 적용
-    for (const entry of [myEntry, enemyEntry]) {
-      for (const pkmn of entry) {
-        if (pkmn.hp <= 0) continue
-        const dmg = calcPoisonBurnDamage(pkmn)
-        if (dmg > 0) {
-          pkmn.hp = Math.max(0, pkmn.hp - dmg)
-          newLines.push(`${pkmn.name}${josa(pkmn.name, "은는")} ${statusName(pkmn.status)} 때문에 ${dmg} 데미지를 입었다!`)
-          if (pkmn.hp <= 0) newLines.push(`${pkmn.name}${josa(pkmn.name, "은는")} 쓰러졌다!`)
-        }
+    const { msgs: eotMsgs, anyFainted: eotFainted } = applyEndOfTurnDamage([myEntry, enemyEntry])
+    newLines.push(...eotMsgs)
+
+    // 독/화상으로 기절 시 게임 종료 체크
+    if (eotFainted) {
+      if (isAllFainted(enemyEntry)) {
+        await updateDoc(roomRef, {
+          [`${mySlot}_entry`]: myEntry,
+          [`${enemySlot}_entry`]: enemyEntry,
+          turn_count: nextTurnCount,
+          game_over: true, winner: myName, current_turn: null,
+          ...(weatherResult.weather ? { weather: weatherResult.weather } : {})
+        })
+        newLines.push(`${myName}의 승리!`)
+        await addLogs(newLines)
+        return
+      } else if (isAllFainted(myEntry)) {
+        await updateDoc(roomRef, {
+          [`${mySlot}_entry`]: myEntry,
+          [`${enemySlot}_entry`]: enemyEntry,
+          turn_count: nextTurnCount,
+          game_over: true, winner: enemyName, current_turn: null,
+          ...(weatherResult.weather ? { weather: weatherResult.weather } : {})
+        })
+        newLines.push(`${enemyName}의 승리!`)
+        await addLogs(newLines)
+        return
       }
     }
   }
+
+  // ── 랭크 만료 메시지 (addLogs 직전에 추가)
+  newLines.push(...myRankExpiredMsgs)
 
   if (isAllFainted(enemyEntry)) {
     await updateDoc(roomRef, {
       [`${mySlot}_entry`]: myEntry,
       [`${enemySlot}_entry`]: enemyEntry,
       turn_count: nextTurnCount,
-      game_over: true, winner: myName, current_turn: null
+      game_over: true, winner: myName, current_turn: null,
+      ...(weatherResult.weather ? { weather: weatherResult.weather } : {})
     })
     newLines.push(`${myName}의 승리!`)
   } else if (isAllFainted(myEntry)) {
@@ -915,7 +811,8 @@ async function useMove(moveIdx, data) {
       [`${mySlot}_entry`]: myEntry,
       [`${enemySlot}_entry`]: enemyEntry,
       turn_count: nextTurnCount,
-      game_over: true, winner: enemyName, current_turn: null
+      game_over: true, winner: enemyName, current_turn: null,
+      ...(weatherResult.weather ? { weather: weatherResult.weather } : {})
     })
     newLines.push(`${enemyName}의 승리!`)
   } else {
@@ -923,7 +820,8 @@ async function useMove(moveIdx, data) {
       [`${mySlot}_entry`]: myEntry,
       [`${enemySlot}_entry`]: enemyEntry,
       current_turn: enemySlot,
-      turn_count: nextTurnCount
+      turn_count: nextTurnCount,
+      ...(weatherResult.weather ? { weather: weatherResult.weather } : {})
     })
   }
 
