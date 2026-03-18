@@ -66,27 +66,17 @@ function isAllFainted(entry) {
 
 // ──────────────────────────────────────────────
 // 랭크 시스템
-// ranks = {
-//   atk: 0, atkTurns: 0,
-//   def: 0, defTurns: 0,
-//   spd: 0, spdTurns: 0,
-// }
-// 모든 랭크는 2턴 유지 (피격 무관)
-// 자기 행동 시작 시 자기 랭크 차감
 // ──────────────────────────────────────────────
 
 function defaultRanks() {
   return { atk: 0, atkTurns: 0, def: 0, defTurns: 0, spd: 0, spdTurns: 0 }
 }
 
-// 랭크값 읽기 (턴이 남아 있을 때만 유효)
 function getActiveRank(pokemon, key) {
   const r = pokemon.ranks ?? {}
   return (r[`${key}Turns`] ?? 0) > 0 ? (r[key] ?? 0) : 0
 }
 
-// 자기 행동 시작 시 자기 랭크 차감 (atk/def/spd 전부)
-// 만료된 랭크는 메시지 반환
 function tickMyRanks(pokemon) {
   if (!pokemon.ranks) return []
   const r = pokemon.ranks
@@ -118,11 +108,8 @@ function tickMyRanks(pokemon) {
 
 // ──────────────────────────────────────────────
 // 명중 판정
-// 1단계: 기술 명중률
-// 2단계: 회피율 = 5 × (수비 스피드 - 공격 스피드)% ± 스피드 랭크%p
 // ──────────────────────────────────────────────
 function calcHit(attacker, moveInfo, defender) {
-  // 1단계: 기술 명중
   const accuracyRoll = Math.random() * 100
   if (accuracyRoll >= (moveInfo.accuracy ?? 100)) {
     return { hit: false, hitType: "missed" }
@@ -130,11 +117,9 @@ function calcHit(attacker, moveInfo, defender) {
 
   if (moveInfo.alwaysHit) return { hit: true, hitType: "hit" }
 
-  // 상태이상에 따른 스피드 패널티 (effecthandler)
   const atkSpd = Math.max(1, (attacker.speed ?? 3) - getStatusSpdPenalty(attacker))
   const defSpd = Math.max(1, (defender.speed ?? 3) - getStatusSpdPenalty(defender))
 
-  // 2단계: 회피율
   const spdDiff = defSpd - atkSpd
   const baseEvasion = Math.max(0, 5 * spdDiff)
   const defSpdRankBonus = Math.max(0, getActiveRank(defender, "spd"))
@@ -150,7 +135,6 @@ function calcHit(attacker, moveInfo, defender) {
 
 // ──────────────────────────────────────────────
 // 데미지 계산
-// ((위력 + 공격력×4 + 1d10) × 타입상성 × 자속보정 ± 공격 랭크) - (방어력×5) - (방어 랭크×3)
 // ──────────────────────────────────────────────
 function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
   const move = moves[moveName]
@@ -188,9 +172,10 @@ function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
 }
 
 // ──────────────────────────────────────────────
-// 조사 처리 유틸 (effecthandler.js의 josa 위임)
+// 조사 처리 유틸
 // ──────────────────────────────────────────────
 function josa(word, type) { return josaEH(word, type) }
+
 function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
   const bar = document.getElementById(barId)
   const text = textId ? document.getElementById(textId) : null
@@ -205,6 +190,22 @@ function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
 
   if (text) {
     text.innerText = showNumbers ? `HP: ${hp} / ${maxHp}` : ""
+  }
+}
+
+// ──────────────────────────────────────────────
+// portrait 업데이트
+// ──────────────────────────────────────────────
+function updatePortrait(prefix, pokemon) {
+  const img = document.getElementById(`${prefix}-portrait`)
+  if (!img) return
+
+  if (pokemon.portrait) {
+    img.src = pokemon.portrait
+    img.alt = pokemon.name
+    img.style.display = "block"
+  } else {
+    img.style.display = "none"
   }
 }
 
@@ -472,7 +473,7 @@ async function leaveGame() {
 }
 
 // ──────────────────────────────────────────────
-// 포켓몬 UI (HP바 + 상태이상 표시)
+// 포켓몬 UI (HP바 + 상태이상 표시 + portrait)
 // ──────────────────────────────────────────────
 function updateActiveUI(slot, data, prefix) {
   const activeIdx = data[`${slot}_active_idx`]
@@ -491,6 +492,9 @@ function updateActiveUI(slot, data, prefix) {
     pokemon.maxHp,
     showNumbers
   )
+
+  // ── portrait 업데이트
+  updatePortrait(prefix, pokemon)
 }
 
 // ──────────────────────────────────────────────
@@ -592,7 +596,7 @@ async function useMove(moveIdx, data) {
 
   const newLines = []
 
-  // ── 행동 전 상태이상/풀죽음 체크 (effecthandler)
+  // ── 행동 전 상태이상/풀죽음 체크
   const preAction = checkPreActionStatus(myPokemon)
   newLines.push(...preAction.msgs)
   if (preAction.blocked) {
@@ -605,7 +609,7 @@ async function useMove(moveIdx, data) {
     return
   }
 
-  // ── 혼란 체크 (effecthandler)
+  // ── 혼란 체크
   const confResult = checkConfusion(myPokemon)
   newLines.push(...confResult.msgs)
   if (confResult.selfHit) {
@@ -632,7 +636,6 @@ async function useMove(moveIdx, data) {
 
   const moveInfo = moves[moveData.name]
 
-  // 공격 지문
   newLines.push(`${myPokemon.name}의 ${moveData.name}!`)
 
   // ── 랭크 기술 처리
@@ -641,7 +644,6 @@ async function useMove(moveIdx, data) {
     const myRanks  = { ...defaultRanks(), ...(myPokemon.ranks ?? {}) }
     const eneRanks = { ...defaultRanks(), ...(enePokemon.ranks ?? {}) }
 
-    // 공격 랭크
     if (r.atk !== undefined) {
       if (r.atk > 0) {
         const prev = myRanks.atk
@@ -660,7 +662,6 @@ async function useMove(moveIdx, data) {
       }
     }
 
-    // 방어 랭크
     if (r.def !== undefined) {
       if (r.def > 0) {
         const prev = myRanks.def
@@ -679,7 +680,6 @@ async function useMove(moveIdx, data) {
       }
     }
 
-    // 스피드 랭크
     if (r.spd !== undefined) {
       if (r.spd > 0) {
         const prev = myRanks.spd
@@ -701,7 +701,6 @@ async function useMove(moveIdx, data) {
     myPokemon.ranks  = myRanks
     enePokemon.ranks = eneRanks
 
-    // 랭크 기술도 행동이므로 자기 랭크 차감
     const myRankExpiredMsgs = tickMyRanks(myPokemon)
     newLines.push(...myRankExpiredMsgs)
 
@@ -715,11 +714,11 @@ async function useMove(moveIdx, data) {
     return
   }
 
-  // ── 현재 유효한 랭크 값 읽기 (tick 전에 읽어야 이번 턴에 적용됨)
+  // ── 현재 유효한 랭크 값 읽기
   const atkRank    = getActiveRank(myPokemon, "atk")
   const defRankEne = getActiveRank(enePokemon, "def")
 
-  // ── 내 랭크 차감 (행동 시작 시 자기 랭크 소모)
+  // ── 내 랭크 차감
   const myRankExpiredMsgs = tickMyRanks(myPokemon)
 
   // ── 명중 판정
@@ -745,7 +744,6 @@ async function useMove(moveIdx, data) {
 
       enePokemon.hp = Math.max(0, enePokemon.hp - damage)
 
-      // ── 부가효과 처리 (effecthandler)
       const effectMsgs = applyMoveEffect(moveInfo?.effect, myPokemon, enePokemon)
       newLines.push(...effectMsgs)
 
@@ -753,20 +751,18 @@ async function useMove(moveIdx, data) {
     }
   }
 
-  // ── 날씨 기술 처리 (effecthandler)
+  // ── 날씨 기술 처리
   const weatherResult = applyWeatherEffect(moveInfo?.effect)
   if (weatherResult.weather) {
     newLines.push(...weatherResult.msgs)
-    // weather 필드는 room에 저장 (updateDoc 시 포함)
   }
 
-  // ── 턴 종료 처리 (독/화상 데미지, effecthandler)
+  // ── 턴 종료 처리 (독/화상 데미지)
   const nextTurnCount = (freshData.turn_count ?? 1) + 1
   if (nextTurnCount % 2 === 0) {
     const { msgs: eotMsgs, anyFainted: eotFainted } = applyEndOfTurnDamage([myEntry, enemyEntry])
     newLines.push(...eotMsgs)
 
-    // 독/화상으로 기절 시 게임 종료 체크
     if (eotFainted) {
       if (isAllFainted(enemyEntry)) {
         await updateDoc(roomRef, {
@@ -794,7 +790,7 @@ async function useMove(moveIdx, data) {
     }
   }
 
-  // ── 랭크 만료 메시지 (addLogs 직전에 추가)
+  // ── 랭크 만료 메시지
   newLines.push(...myRankExpiredMsgs)
 
   if (isAllFainted(enemyEntry)) {
