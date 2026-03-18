@@ -34,7 +34,8 @@ const roomRef     = doc(db, "rooms", ROOM_ID)
 
 let myUid        = null
 let touched      = false
-let introStarted = false
+let introDone    = false   // 인트로 5초 연출이 끝났는지
+let bothReady    = false   // 상대방도 ready인지
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
 
@@ -68,52 +69,51 @@ function bindTouch() {
 }
 
 async function onTouched() {
-  // 터치 컨텍스트 안에서 BGM 재생 → 크롬 자동재생 정책 우회
+  // 1) BGM — 터치 컨텍스트 안에서 즉시 재생
   const chosen = BGM_LIST[Math.floor(Math.random() * BGM_LIST.length)]
   bgmAudio = new Audio(chosen)
   bgmAudio.loop   = true
   bgmAudio.volume = 0.7
   bgmAudio.play().catch(() => {})
 
-  // Firestore에 내 ready 마킹
-  const snap  = await getDoc(roomRef)
-  const room  = snap.data()
+  // 2) VS 인트로 즉시 재생
+  const snap = await getDoc(roomRef)
+  const room = snap.data()
+  playVsIntro(room)   // await 안 함 — 인트로 재생하면서 아래도 동시에 진행
+
+  // 3) Firestore에 내 ready 마킹
   const field = room?.player1_uid === myUid ? "intro_ready_p1" : "intro_ready_p2"
   await updateDoc(roomRef, { [field]: true })
 }
 
+// 상대방 ready 감지 (인트로 끝난 후 배틀 시작 타이밍에 사용)
 function listenReady() {
-  onSnapshot(roomRef, async (snap) => {
+  onSnapshot(roomRef, (snap) => {
     const room = snap.data()
     if (!room) return
 
     const r1 = !!room.intro_ready_p1
     const r2 = !!room.intro_ready_p2
 
-    // 상태 텍스트
-    if      (!r1 && !r2) readyStatus.innerText = ""
-    else if (!r1 || !r2) readyStatus.innerText = "상대방을 기다리는 중..."
+    bothReady = r1 && r2
 
-    // 둘 다 ready → VS 인트로 재생 (각 클라이언트에서 독립 실행)
-    if (r1 && r2 && !introStarted) {
-      introStarted = true
-      playVsIntro(room)
+    // 인트로 연출이 이미 끝난 상태에서 상대방 ready 도착 → 바로 배틀 시작
+    if (bothReady && introDone) {
+      startBattle()
     }
   })
 }
 
 async function playVsIntro(room) {
-  // 이름 세팅
   const p1 = (room.player1_name ?? "PLAYER1").toUpperCase()
   const p2 = (room.player2_name ?? "PLAYER2").toUpperCase()
   document.getElementById("vs-name-left").textContent  = p1
   document.getElementById("vs-name-right").textContent = p2
 
-  // 터치 화면 숨기고 VS 인트로 표시
   touchScreen.style.display = "none"
   vsIntro.classList.add("show")
 
-  // ── 한 프레임 기다린 뒤 애니메이션 시작 (display:none → block 직후 바로 class 추가하면 transition 무시됨)
+  // display 전환 후 한 프레임 대기 (애니메이션 트리거용)
   await wait(50)
 
   const flash      = document.getElementById("vs-flash")
@@ -124,28 +124,41 @@ async function playVsIntro(room) {
   const innerLeft  = document.getElementById("vs-inner-left")
   const innerRight = document.getElementById("vs-inner-right")
 
-  // 원본 intro.html 타이밍 그대로
   flash.classList.add("show")
-
   await wait(100); vsLeft.classList.add("show")
   await wait(100); vsRight.classList.add("show")
   await wait(250)
-
   vsText.classList.add("show")
   flash.classList.add("show")
   burst.classList.add("show")
   vsIntro.classList.add("vs-shake")
-
   await wait(450)
   innerLeft.classList.add("drift-left")
   innerRight.classList.add("drift-right")
 
-  // 5초 후 배틀로 전환
+  // 5초 연출 대기
   await wait(5000)
-  endIntro()
+  introDone = true
+
+  // 이미 상대방도 ready → 바로 배틀 시작
+  if (bothReady) {
+    startBattle()
+  } else {
+    // 상대방 아직 안 눌렀음 → 대기 메시지 표시
+    vsIntro.style.opacity = "0.3"
+    readyStatus.style.color = "white"
+    readyStatus.style.fontSize = "clamp(1rem, 3vw, 1.4rem)"
+    readyStatus.style.position = "absolute"
+    readyStatus.style.bottom = "10vh"
+    readyStatus.style.width = "100%"
+    readyStatus.style.textAlign = "center"
+    readyStatus.innerText = "상대방을 기다리는 중..."
+    // listenReady의 onSnapshot이 상대 ready 감지하면 startBattle() 호출
+  }
 }
 
-function endIntro() {
+function startBattle() {
+  if (overlay.classList.contains("fade-out")) return  // 중복 방지
   overlay.classList.add("fade-out")
   document.getElementById("battle-screen").classList.add("visible")
   setTimeout(() => {
