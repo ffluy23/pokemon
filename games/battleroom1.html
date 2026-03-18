@@ -125,8 +125,51 @@
     .dice-num { font-size:64px; font-weight:bold; color:#e63946; min-width:80px; text-align:center; }
     #turn-display { font-size:20px; font-weight:bold; margin:8px 0; }
     #turn-count   { font-size:14px; color:gray; }
-    #move-buttons { display:grid; grid-template-columns:1fr 1fr; gap:8px; max-width:320px; margin:12px 0; }
-    #move-buttons button { padding:10px; font-size:13px; white-space:pre-line; text-align:center; line-height:1.4; }
+
+    /* ══ 기술 버튼 ══ */
+    #move-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      max-width: 320px;
+      margin: 12px 0;
+    }
+    #move-buttons button {
+      /* 이미지 버튼 */
+      width: 150px;
+      height: 155px;              /* 1920:1980 비율 ≒ 1:1.03 */
+      padding: 0;
+      background-image: url('https://ok-fuchsia-ohth5msit3.edgeone.app/%EC%A0%9C%EB%AA%A9%20%EC%97%86%EC%9D%8C-2%20(1).png');
+      background-size: 100% 100%;
+      background-color: transparent;
+      background-repeat: no-repeat;
+      border: none;
+      /* 텍스트 */
+      font-size: 12px;
+      font-weight: bold;
+      color: white;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+      white-space: pre-line;
+      text-align: center;
+      line-height: 1.4;
+      cursor: pointer;
+      /* 수직 중앙 정렬 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #move-buttons button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    #move-buttons button:not(:disabled):hover {
+      filter: brightness(1.15);
+    }
+    #move-buttons button:not(:disabled):active {
+      filter: brightness(0.9);
+      transform: scale(0.97);
+    }
+
     #battle-log { width:100%; max-height:150px; overflow-y:auto; border:1px solid #ccc; padding:8px; background:#f9f9f9; font-size:14px; box-sizing:border-box; }
     #battle-log p { margin:2px 0; }
     button:disabled { opacity:0.4; cursor:not-allowed; }
@@ -153,12 +196,10 @@
 
   <!-- ══ 인트로 오버레이 ══ -->
   <div id="intro-overlay">
-    <!-- 터치 대기 -->
     <div id="touch-screen">
       <div id="touch-prompt">아무데나 터치하여 시작!</div>
       <div id="touch-ready-status"></div>
     </div>
-    <!-- VS 인트로 inline -->
     <div id="vs-screen">
       <div class="vs-bg-line"></div>
       <div class="vs-flash"  id="vs-flash"></div>
