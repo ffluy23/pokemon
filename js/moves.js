@@ -82,7 +82,7 @@ export const moves = {
 
   // ───── 바위 ─────
   "스톤에지": { power: 40, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
-  "바위깨기": { power: 30, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
+  "바위깨기": { power: 30, type: "바위", accuracy: 80,  alwaysHit: false, effect: null, rank: { def: -2 } },
   "파워젬":   { power: 50, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
   "록블라스트": { power: 40, type: "바위", accuracy: 90, alwaysHit: false, effect: null },
 
@@ -113,7 +113,7 @@ export const moves = {
 
   // ───── 강철 ─────
   "아이언헤드": { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
-  "메탈크로우":   { power: 40, type: "강철", accuracy: 95, alwaysHit: false, effect: null },
+  "메탈크로우":   { power: 40, type: "강철", accuracy: 95, alwaysHit: false, effect: null, rank: { chance: 0.1, atk: 3 } },
   "불릿펀치":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
   "플래시캐논": { power: 40, type: "강철", accuracy: 100, alwaysHit: true,  effect: null },
 
