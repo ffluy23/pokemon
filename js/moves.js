@@ -31,6 +31,7 @@ export const moves = {
   "몸통박치기":     { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
   "하이퍼보이스":   { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
   "할퀴기":         { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
+  "속이기": { power: 40, type: "노말", accuracy: 100, alwaysHit: true, effect: { chance: 1, "풀죽음" }},
 
   // ───── 불 ─────
   "화염방사":   { power: 50, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
@@ -81,6 +82,7 @@ export const moves = {
 
   // ───── 바위 ─────
   "스톤에지": { power: 40, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
+  "바위깨기": { power: 30, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
   "파워젬":   { power: 50, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
   "록블라스트": { power: 40, type: "바위", accuracy: 90, alwaysHit: false, effect: null },
 
@@ -111,7 +113,7 @@ export const moves = {
 
   // ───── 강철 ─────
   "아이언헤드": { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
-  "메탈크로우":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
+  "메탈크로우":   { power: 40, type: "강철", accuracy: 95, alwaysHit: false, effect: null },
   "불릿펀치":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
   "플래시캐논": { power: 40, type: "강철", accuracy: 100, alwaysHit: true,  effect: null },
 
