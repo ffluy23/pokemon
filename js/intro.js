@@ -54,10 +54,21 @@ const isSpectatorParam = new URLSearchParams(location.search).get("spectator") =
 let myUid     = null
 let mySlot    = null
 let touched   = false
-let introDone = false
 let bothReady = false
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
+
+// bothReady가 되거나 timeout 중 먼저 오는 것
+function waitUntilBothReadyOrTimeout(ms) {
+  return Promise.race([
+    wait(ms),
+    new Promise(r => {
+      const check = setInterval(() => {
+        if (bothReady) { clearInterval(check); r() }
+      }, 200)
+    })
+  ])
+}
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) return
@@ -89,7 +100,7 @@ function bindTouch() {
 }
 
 async function onTouched() {
-  // 터치 컨텍스트 안에서 BGM 재생 → 크롬 자동재생 정책 우회
+  // BGM — 터치 컨텍스트 안에서 재생
   const chosen = BGM_LIST[Math.floor(Math.random() * BGM_LIST.length)]
   bgmAudio = new Audio(chosen)
   bgmAudio.loop   = true
@@ -99,9 +110,7 @@ async function onTouched() {
   const snap = await getDoc(roomRef)
   const room = snap.data()
 
-  // ── 배경 처리
-  // p1: 랜덤 선택 → Firestore 저장 → 즉시 적용
-  // p2: 이미 저장된 배경 읽어서 적용 (없으면 listenReady에서 감지)
+  // 배경 처리
   if (!bgApplied) {
     if (mySlot === "p1") {
       const bgUrl = BG_LIST[Math.floor(Math.random() * BG_LIST.length)]
@@ -114,7 +123,7 @@ async function onTouched() {
     }
   }
 
-  // VS 인트로 즉시 재생
+  // VS 인트로 재생
   playVsIntro(room)
 
   // Firestore에 내 ready 마킹
@@ -127,7 +136,7 @@ function listenReady() {
     const room = snap.data()
     if (!room) return
 
-    // p2가 터치 전에 p1이 배경 저장했을 경우 대비
+    // p2가 터치 전 p1이 배경 저장했을 경우 대비
     if (room.background && !bgApplied) {
       bgApplied = true
       applyBackground(room.background)
@@ -139,7 +148,10 @@ function listenReady() {
 
     if (touched && (!r1 || !r2)) readyStatus.innerText = "상대방을 기다리는 중..."
 
-    if (bothReady && introDone) startBattle()
+    // ── 핵심: introDone 조건 제거
+    // bothReady + touched면 바로 배틀 시작
+    // (playVsIntro가 아직 진행 중이어도 startBattle이 중복 방지함)
+    if (bothReady && touched) startBattle()
   })
 }
 
@@ -172,20 +184,15 @@ async function playVsIntro(room) {
   innerLeft.classList.add("drift-left")
   innerRight.classList.add("drift-right")
 
-  await wait(5000)
-  introDone = true
+  // 5초 대기 or bothReady 중 먼저 오는 것
+  await waitUntilBothReadyOrTimeout(5000)
 
-  if (bothReady) {
-    startBattle()
-  } else {
-    vsScreen.style.opacity = "0.3"
-    readyStatus.style.cssText = "color:white; font-size:clamp(1rem,3vw,1.4rem); position:absolute; bottom:10vh; width:100%; text-align:center; z-index:10;"
-    readyStatus.innerText = "상대방을 기다리는 중..."
-  }
+  // 인트로 끝 → 무조건 startBattle (중복 방지는 내부에서)
+  startBattle()
 }
 
 function startBattle() {
-  if (overlay.classList.contains("fade-out")) return
+  if (overlay.classList.contains("fade-out")) return  // 중복 방지
   overlay.classList.add("fade-out")
   document.getElementById("battle-screen").classList.add("visible")
   setTimeout(() => {
