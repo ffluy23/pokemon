@@ -72,6 +72,12 @@ onAuthStateChanged(auth, async (user) => {
   const room = snap.data()
   mySlot = room?.player1_uid === myUid ? "p1" : "p2"
 
+  // 게임이 이미 진행 중이면 인트로 스킵 (새로고침 재접속)
+  if (room?.game_started) {
+    skipIntro()
+    return
+  }
+
   bindTouch()
   listenReady()
 })
