@@ -205,7 +205,34 @@ function startBattle() {
   }, 800)
 }
 
-function skipIntro() {
+async function skipIntro() {
   overlay.classList.add("hidden")
   document.getElementById("battle-screen").classList.add("visible")
+
+  // 새로고침 재접속 시 배경 + BGM 복원
+  const snap = await getDoc(roomRef)
+  const room = snap.data()
+
+  if (room?.background && !bgApplied) {
+    bgApplied = true
+    applyBackground(room.background)
+  }
+
+  // BGM 재시작 시도
+  if (!bgmAudio) {
+    const chosen = BGM_LIST[Math.floor(Math.random() * BGM_LIST.length)]
+    bgmAudio = new Audio(chosen)
+    bgmAudio.loop   = true
+    bgmAudio.volume = 0.7
+    bgmAudio.play().catch(() => {
+      // 크롬 자동재생 정책으로 막힌 경우 → 첫 클릭/터치 시 재시도
+      const resume = () => {
+        bgmAudio.play().catch(() => {})
+        document.removeEventListener("click",      resume)
+        document.removeEventListener("touchstart", resume)
+      }
+      document.addEventListener("click",      resume)
+      document.addEventListener("touchstart", resume)
+    })
+  }
 }
