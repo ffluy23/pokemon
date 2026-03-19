@@ -218,23 +218,30 @@ async function skipIntro() {
   }
 
   // BGM 복원
-  if (!bgmAudio) {
-    const chosen = BGM_LIST[Math.floor(Math.random() * BGM_LIST.length)]
-    bgmAudio = new Audio(chosen)
-    bgmAudio.loop   = true
-    bgmAudio.volume = 0.7
+  // 모바일은 터치 컨텍스트 안에서 Audio 생성 + play() 해야 함
+  // → 토스트 버튼 onclick 안에서 처리
+  const chosen = BGM_LIST[Math.floor(Math.random() * BGM_LIST.length)]
 
-    // 재생 시도
-    bgmAudio.play().catch(() => {})
-
-    // 0.5초 후에도 재생 안 되면 토스트 (모바일 silently fail 대비)
+  // 데스크탑은 바로 시도
+  const testAudio = new Audio(chosen)
+  testAudio.loop   = true
+  testAudio.volume = 0.7
+  testAudio.play().then(() => {
+    bgmAudio = testAudio  // 성공하면 그대로 사용
+  }).catch(() => {
+    // 실패하면 토스트 — onclick 안에서 새로 생성
+    showBgmToast(chosen)
     setTimeout(() => {
-      if (bgmAudio && bgmAudio.paused) showBgmToast()
+      if (bgmAudio && bgmAudio.paused) showBgmToast(chosen)
     }, 500)
-  }
+  })
+
+  setTimeout(() => {
+    if (!bgmAudio || bgmAudio.paused) showBgmToast(chosen)
+  }, 500)
 }
 
-function showBgmToast() {
+function showBgmToast(chosen) {
   if (document.getElementById("bgm-toast")) return
 
   if (!document.getElementById("bgm-toast-style")) {
@@ -262,14 +269,15 @@ function showBgmToast() {
   btn.id = "bgm-toast"
   btn.innerText = "🎵 탭하여 브금 재생"
 
-  // onclick으로 등록 → 모바일 제스처 컨텍스트 확실히 유지
   btn.onclick = () => {
+    // 터치 컨텍스트 안에서 Audio 새로 생성 + play() → 모바일 정책 우회
+    bgmAudio = new Audio(chosen)
+    bgmAudio.loop   = true
+    bgmAudio.volume = 0.7
     bgmAudio.play().catch(() => {})
     btn.remove()
   }
 
   document.body.appendChild(btn)
-
-  // 10초 후 자동 제거
   setTimeout(() => btn.remove(), 10000)
 }
