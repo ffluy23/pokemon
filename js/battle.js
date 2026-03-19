@@ -590,7 +590,7 @@ async function useMove(moveIdx, data) {
         showBattlePopup("enemy", "critical")
         await addLog("급소에 맞았다!"); await wait(280)
       }
-      const effectMsgs = applyMoveEffect(moveInfo?.effect, myPokemon, enePokemon)
+      const effectMsgs = applyMoveEffect(moveInfo?.effect, myPokemon, enePokemon, damage)
       for (const msg of effectMsgs) { await addLog(msg); await wait(280) }
       if (enePokemon.hp <= 0) { await addLog(`${enePokemon.name}${josa(enePokemon.name, "은는")} 쓰러졌다!`); await wait(300) }
     }
