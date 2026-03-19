@@ -54,21 +54,10 @@ const isSpectatorParam = new URLSearchParams(location.search).get("spectator") =
 let myUid     = null
 let mySlot    = null
 let touched   = false
-let bothReady = false
+let introDone = false   // 내 인트로 5초가 끝났는지
+let bothReady = false   // 상대방도 ready인지
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
-
-// bothReady가 되거나 timeout 중 먼저 오는 것
-function waitUntilBothReadyOrTimeout(ms) {
-  return Promise.race([
-    wait(ms),
-    new Promise(r => {
-      const check = setInterval(() => {
-        if (bothReady) { clearInterval(check); r() }
-      }, 200)
-    })
-  ])
-}
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) return
@@ -148,10 +137,8 @@ function listenReady() {
 
     if (touched && (!r1 || !r2)) readyStatus.innerText = "상대방을 기다리는 중..."
 
-    // ── 핵심: introDone 조건 제거
-    // bothReady + touched면 바로 배틀 시작
-    // (playVsIntro가 아직 진행 중이어도 startBattle이 중복 방지함)
-    if (bothReady && touched) startBattle()
+    // 내 인트로가 끝난 상태에서 상대방 ready가 뒤늦게 도착한 경우
+    if (bothReady && introDone) startBattle()
   })
 }
 
@@ -184,11 +171,20 @@ async function playVsIntro(room) {
   innerLeft.classList.add("drift-left")
   innerRight.classList.add("drift-right")
 
-  // 5초 대기 or bothReady 중 먼저 오는 것
-  await waitUntilBothReadyOrTimeout(5000)
+  // 5초 인트로 대기
+  await wait(5000)
+  introDone = true
 
-  // 인트로 끝 → 무조건 startBattle (중복 방지는 내부에서)
-  startBattle()
+  if (bothReady) {
+    // 상대방도 이미 ready → 바로 배틀 시작
+    startBattle()
+  } else {
+    // 상대방 아직 대기 중 → 희미하게 + 메시지 표시
+    // listenReady의 onSnapshot이 상대 ready 감지하면 startBattle() 호출
+    vsScreen.style.opacity = "0.3"
+    readyStatus.style.cssText = "color:white; font-size:clamp(1rem,3vw,1.4rem); position:absolute; bottom:10vh; width:100%; text-align:center; z-index:10;"
+    readyStatus.innerText = "상대방을 기다리는 중..."
+  }
 }
 
 function startBattle() {
