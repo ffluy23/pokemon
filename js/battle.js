@@ -18,10 +18,42 @@ import { fadeBgmOut } from "./intro.js"
 const roomRef = doc(db, "rooms", ROOM_ID)
 const logsRef = collection(db, "rooms", ROOM_ID, "logs")
 
+// ── 효과음
+const SFX_DICE = "https://slippery-copper-mzpmcmc2ra.edgeone.app/soundreality-bicycle-bell-155622.mp3"
+const SFX_BTN  = "https://usual-salmon-mnqxptwyvw.edgeone.app/Pokemon%20(A%20Button)%20-%20Sound%20Effect%20(HD)%20(1)%20(1).mp3"
+
+function playSound(url) {
+  const a = new Audio(url); a.volume = 0.6; a.play().catch(() => {})
+}
+
+function popDiceNum(el) {
+  if (!el) return
+  el.classList.remove("pop")
+  void el.offsetWidth
+  el.classList.add("pop")
+  el.addEventListener("animationend", () => el.classList.remove("pop"), { once: true })
+}
+
+// 급소/회피 팝업
+function showBattlePopup(prefix, type) {
+  const wrap = document.querySelector(`#${prefix}-pokemon-area .portrait-wrap`)
+    ?? document.getElementById(`${prefix}-pokemon-area`)
+  if (!wrap) return
+  const el = document.createElement("div")
+  el.className = `battle-popup ${type}`
+  el.innerText = type === "critical" ? "급소!" : "회피!"
+  wrap.style.position = "relative"
+  wrap.appendChild(el)
+  void el.offsetWidth
+  el.classList.add("show")
+  el.addEventListener("animationend", () => el.remove(), { once: true })
+}
+
 let mySlot   = null, myUid  = null, myTurn = false
 let gameStarted = false, diceShown = false, actionDone = false, gameOver = false
 let battleIntroSequenceStarted = false
 let lastHitEventTs = 0
+let lastDiceEventTs = 0
 
 const isSpectator = new URLSearchParams(location.search).get("spectator") === "true"
 
@@ -83,8 +115,14 @@ function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
 
 function updatePortrait(prefix, pokemon, animate = false) {
   const img = document.getElementById(`${prefix}-portrait`)
+  const placeholder = document.getElementById(`${prefix}-portrait-placeholder`)
   if (!img) return
-  if (!pokemon.portrait) { img.classList.remove("visible"); img.style.display = "none"; return }
+  if (!pokemon?.portrait) {
+    img.classList.remove("visible"); img.style.display = "none"
+    if (placeholder) placeholder.style.display = "block"
+    return
+  }
+  if (placeholder) placeholder.style.display = "none"
   img.classList.remove("visible", "slide-in-my", "slide-in-enemy")
   img.style.display = "block"; img.src = pokemon.portrait; img.alt = pokemon.name
   setTimeout(() => {
@@ -96,9 +134,14 @@ function triggerAttackEffect(atkPfx, defPfx) {
   return new Promise(resolve => {
     const atkArea = document.getElementById(`${atkPfx}-pokemon-area`)
     const defArea = document.getElementById(`${defPfx}-pokemon-area`)
+    const wrapper = document.getElementById("battle-wrapper")
     if (atkArea) {
       atkArea.classList.add("attacker-flash")
       atkArea.addEventListener("animationend", () => atkArea.classList.remove("attacker-flash"), { once: true })
+    }
+    if (wrapper) {
+      wrapper.classList.add("screen-shake")
+      wrapper.addEventListener("animationend", () => wrapper.classList.remove("screen-shake"), { once: true })
     }
     setTimeout(() => {
       if (defArea) {
@@ -153,25 +196,57 @@ function listenLogs() {
   })
 }
 
-function animateDualDice(p1Roll, p2Roll, onDone) {
+// 공격 주사위 — Firestore에서 감지해서 양쪽 다 재생
+function animateDiceSingle(slot, finalRoll, p1Name, p2Name) {
+  return new Promise(resolve => {
+    const wrap = document.getElementById("dice-wrap")
+    const p1Box = document.getElementById("dice-box-p1"), p2Box = document.getElementById("dice-box-p2")
+    const diceEl = document.getElementById(slot === "p1" ? "dice-p1" : "dice-p2")
+    const nameEl = document.getElementById(slot === "p1" ? "p1-name-dice" : "p2-name-dice")
+    if (!wrap || !diceEl) { resolve(); return }
+
+    if (p1Box) p1Box.style.display = slot === "p1" ? "block" : "none"
+    if (p2Box) p2Box.style.display = slot === "p2" ? "block" : "none"
+    if (nameEl) nameEl.innerText = slot === "p1" ? (p1Name ?? "Player1") : (p2Name ?? "Player2")
+    wrap.style.display = "flex"
+
+    let count = 0
+    const iv = setInterval(() => {
+      diceEl.innerText = rollD10(); count++
+      if (count >= 16) {
+        clearInterval(iv)
+        diceEl.innerText = finalRoll
+        popDiceNum(diceEl)
+        playSound(SFX_DICE)
+        setTimeout(() => { wrap.style.display = "none"; resolve() }, 1000)
+      }
+    }, 60)
+  })
+}
+
+function animateDualDice(p1Roll, p2Roll, onDone, p1Name, p2Name) {
   const p1El = document.getElementById("dice-p1"), p2El = document.getElementById("dice-p2")
   const wrap = document.getElementById("dice-wrap")
   const p1Box = document.getElementById("dice-box-p1"), p2Box = document.getElementById("dice-box-p2")
-  const hitBox = document.getElementById("dice-box-hit")
+  const p1NameEl = document.getElementById("p1-name-dice"), p2NameEl = document.getElementById("p2-name-dice")
   if (!wrap) { onDone(); return }
+  if (p1NameEl) p1NameEl.innerText = p1Name ?? "Player1"
+  if (p2NameEl) p2NameEl.innerText = p2Name ?? "Player2"
   if (p1Box) p1Box.style.display = "block"
   if (p2Box) p2Box.style.display = "block"
-  if (hitBox) hitBox.style.display = "none"
   wrap.style.display = "flex"
   let count = 0
   const iv = setInterval(() => {
     if (p1El) p1El.innerText = rollD10()
     if (p2El) p2El.innerText = rollD10()
-    if (++count >= 15) {
+    if (++count >= 22) {
       clearInterval(iv)
       if (p1El) p1El.innerText = p1Roll
       if (p2El) p2El.innerText = p2Roll
-      setTimeout(() => { wrap.style.display = "none"; onDone() }, 1500)
+      const winnerEl = p1Roll >= p2Roll ? p1El : p2El
+      popDiceNum(winnerEl)
+      playSound(SFX_DICE)
+      setTimeout(() => { wrap.style.display = "none"; onDone() }, 1800)
     }
   }, 60)
 }
@@ -210,8 +285,7 @@ async function initTurn(data) {
   const r1 = rollD10(), r2 = rollD10()
   const fs = (p1.speed ?? 3) + r1 >= (p2.speed ?? 3) + r2 ? "p1" : "p2"
   await updateDoc(roomRef, {
-    first_slot: fs,
-    first_pokemon_name: fs === "p1" ? p1.name : p2.name,
+    first_slot: fs, first_pokemon_name: fs === "p1" ? p1.name : p2.name,
     p1_dice: r1, p2_dice: r2
   })
 }
@@ -221,13 +295,15 @@ async function runBattleIntroSequence(data) {
   const enemySlot = mySlot === "p1" ? "p2" : "p1"
   await addLog(`${p1Name}${josa(p1Name, "과와")} ${p2Name}의 승부가 시작됐다!`)
   await wait(3000)
-  await addLogs([
-    `${p1Name}${josa(p1Name, "은는")} ${data.p1_entry[0].name}${josa(data.p1_entry[0].name, "을를")} 내보냈다!`,
-    `${p2Name}${josa(p2Name, "은는")} ${data.p2_entry[0].name}${josa(data.p2_entry[0].name, "을를")} 내보냈다!`,
-    `${data.first_pokemon_name}의 선공!`
-  ])
+
+  // 내보냈다 로그와 동시에 포트레이트 공개
+  const base = Date.now()
+  await addDoc(logsRef, { text: `${p1Name}${josa(p1Name, "은는")} ${data.p1_entry[0].name}${josa(data.p1_entry[0].name, "을를")} 내보냈다!`, ts: base })
+  await addDoc(logsRef, { text: `${p2Name}${josa(p2Name, "은는")} ${data.p2_entry[0].name}${josa(data.p2_entry[0].name, "을를")} 내보냈다!`, ts: base + 1 })
   updatePortrait("my",    data[`${mySlot}_entry`][0],    true)
   updatePortrait("enemy", data[`${enemySlot}_entry`][0], true)
+  await wait(800)
+  await addLog(`${data.first_pokemon_name}의 선공!`)
   await updateDoc(roomRef, { current_turn: data.first_slot, turn_count: 1, intro_done: true })
 }
 
@@ -250,6 +326,12 @@ function listenRoom() {
       triggerBlink(defPrefix)
     }
 
+    // ── 공격 주사위 이벤트 감지 → 양쪽 다 애니메이션 재생
+    if (data.dice_event && data.dice_event.ts > lastDiceEventTs) {
+      lastDiceEventTs = data.dice_event.ts
+      animateDiceSingle(data.dice_event.slot, data.dice_event.roll, data.player1_name, data.player2_name)
+    }
+
     if (data.game_over) { showGameOver(data); return }
 
     if (!data.current_turn) {
@@ -261,7 +343,7 @@ function listenRoom() {
             battleIntroSequenceStarted = true
             await runBattleIntroSequence(data)
           }
-        })
+        }, data.player1_name, data.player2_name)
       }
       return
     }
@@ -314,7 +396,7 @@ async function leaveGame() {
     p1_active_idx: 0, p2_active_idx: 0, p1_dice: null, p2_dice: null,
     first_slot: null, first_pokemon_name: null, intro_done: false,
     intro_ready_p1: false, intro_ready_p2: false,
-    hit_event: null, background: null
+    hit_event: null, background: null, dice_event: null
   })
   location.href = "../main.html"
 }
@@ -324,9 +406,11 @@ function updateActiveUI(slot, data, prefix) {
   if (!pokemon) return
   const st = pokemon.status ? ` [${statusName(pokemon.status)}]` : ""
   const cf = (pokemon.confusion ?? 0) > 0 ? " [혼란]" : ""
-  document.getElementById(`${prefix}-active-name`).innerText = pokemon.name + st + cf
-  updateHpBar(`${prefix}-hp-bar`, `${prefix}-active-hp`, pokemon.hp, pokemon.maxHp, prefix === "my")
-  updatePortrait(prefix, pokemon)
+  const nameEl = document.getElementById(`${prefix}-active-name`)
+  // intro_done 전엔 포켓몬 이름도 숨김
+  if (nameEl) nameEl.innerText = data.intro_done ? (pokemon.name + st + cf) : "???"
+  updateHpBar(`${prefix}-hp-bar`, `${prefix}-active-hp`, pokemon.hp, pokemon.maxHp, prefix === "my" && !!data.intro_done)
+  if (data.intro_done) updatePortrait(prefix, pokemon)
 }
 
 function updateMoveButtons(data) {
@@ -357,7 +441,7 @@ function updateMoveButtons(data) {
     btn.style.background = color
     btn.style.boxShadow = `inset 0 0 0 2px white, 0 0 0 2px ${color}`
     if (isSpectator || fainted || move.pp <= 0 || !myTurn || actionDone) { btn.disabled = true; btn.onclick = null }
-    else { btn.disabled = false; btn.onclick = () => useMove(i, data) }
+    else { btn.disabled = false; btn.onclick = () => { playSound(SFX_BTN); useMove(i, data) } }
   }
 }
 
@@ -367,11 +451,13 @@ function updateBenchButtons(data) {
   myEntry.forEach((pkmn, idx) => {
     if (idx === activeIdx) return
     const btn = document.createElement("button")
-    if (pkmn.hp <= 0) { btn.innerText = `${pkmn.name} (기절)`; btn.disabled = true }
-    else {
-      btn.innerText = `${pkmn.name} (HP: ${pkmn.hp} / ${pkmn.maxHp})`
+    if (pkmn.hp <= 0) {
+      btn.innerHTML = `<span class="bench-name">${pkmn.name}</span><span class="bench-hp">기절</span>`
+      btn.disabled = true
+    } else {
+      btn.innerHTML = `<span class="bench-name">${pkmn.name}</span><span class="bench-hp">HP: ${pkmn.hp}/${pkmn.maxHp}</span>`
       btn.disabled = isSpectator || !myTurn || actionDone
-      if (!isSpectator) btn.onclick = () => switchPokemon(idx)
+      if (!isSpectator) btn.onclick = () => { playSound(SFX_BTN); switchPokemon(idx) }
     }
     bench.appendChild(btn)
   })
@@ -439,6 +525,13 @@ async function useMove(moveIdx, data) {
 
   await addLog(`${myPokemon.name}의 ${moveData.name}!`); await wait(300)
 
+  // ── 공격 전 주사위 — Firestore에 저장해서 양쪽 동시 재생
+  const diceRoll = rollD10()
+  const diceTs = Date.now()
+  await updateDoc(roomRef, { dice_event: { slot: mySlot, roll: diceRoll, ts: diceTs } })
+  await animateDiceSingle(mySlot, diceRoll, freshData.player1_name, freshData.player2_name)
+  await updateDoc(roomRef, { dice_event: null })
+
   if (moveInfo?.rank) {
     const r = moveInfo.rank
     const myR = { ...defaultRanks(), ...(myPokemon.ranks ?? {}) }, eneR = { ...defaultRanks(), ...(enePokemon.ranks ?? {}) }
@@ -471,7 +564,12 @@ async function useMove(moveIdx, data) {
 
   const { hit, hitType } = calcHit(myPokemon, moveInfo, enePokemon)
   if (!hit) {
-    await addLog(hitType === "evaded" ? `${enePokemon.name}에게는 맞지 않았다!` : `그러나 ${myPokemon.name}의 공격은 빗나갔다!`)
+    if (hitType === "evaded") {
+      showBattlePopup("enemy", "evade")
+      await addLog(`${enePokemon.name}에게는 맞지 않았다!`)
+    } else {
+      await addLog(`그러나 ${myPokemon.name}의 공격은 빗나갔다!`)
+    }
   } else {
     const { damage, multiplier, stab, dice, critical } = calcDamage(myPokemon, moveData.name, enePokemon, atkRank, defRankEne)
     if (multiplier === 0) {
@@ -488,7 +586,10 @@ async function useMove(moveIdx, data) {
 
       if (multiplier > 1) { await addLog("효과가 굉장했다!"); await wait(280) }
       if (multiplier < 1) { await addLog("효과가 별로인 듯하다…"); await wait(280) }
-      if (critical)       { await addLog("급소에 맞았다!"); await wait(280) }
+      if (critical) {
+        showBattlePopup("enemy", "critical")
+        await addLog("급소에 맞았다!"); await wait(280)
+      }
       const effectMsgs = applyMoveEffect(moveInfo?.effect, myPokemon, enePokemon)
       for (const msg of effectMsgs) { await addLog(msg); await wait(280) }
       if (enePokemon.hp <= 0) { await addLog(`${enePokemon.name}${josa(enePokemon.name, "은는")} 쓰러졌다!`); await wait(300) }
