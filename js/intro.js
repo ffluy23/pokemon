@@ -218,21 +218,19 @@ async function skipIntro() {
   }
 
   // BGM 복원
-  // 데스크탑: play() 직접 시도
-  // 모바일: 자동재생 정책상 터치 필요 → 안내 토스트 + 첫 터치로 재생
   if (!bgmAudio) {
     const chosen = BGM_LIST[Math.floor(Math.random() * BGM_LIST.length)]
     bgmAudio = new Audio(chosen)
     bgmAudio.loop   = true
     bgmAudio.volume = 0.7
 
-    const tryPlay = bgmAudio.play()
-    if (tryPlay !== undefined) {
-      tryPlay.catch(() => {
-        // 자동재생 실패 → 터치 안내 토스트 표시
-        showBgmToast()
-      })
-    }
+    // 재생 시도
+    bgmAudio.play().catch(() => {})
+
+    // 0.5초 후에도 재생 안 되면 토스트 (모바일 silently fail 대비)
+    setTimeout(() => {
+      if (bgmAudio && bgmAudio.paused) showBgmToast()
+    }, 500)
   }
 }
 
