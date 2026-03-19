@@ -51,11 +51,11 @@ const roomRef     = doc(db, "rooms", ROOM_ID)
 
 const isSpectatorParam = new URLSearchParams(location.search).get("spectator") === "true"
 
-let myUid     = null
-let mySlot    = null
-let touched   = false
-let introDone = false   // 내 인트로 5초가 끝났는지
-let bothReady = false   // 상대방도 ready인지
+let myUid          = null
+let mySlot         = null
+let touched        = false
+let introDone      = false  // 내 인트로 5초가 끝났는지
+let opponentReady  = false  // 상대방이 ready를 올렸는지 (한번 true되면 유지)
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
 
@@ -125,7 +125,7 @@ function listenReady() {
     const room = snap.data()
     if (!room) return
 
-    // p2가 터치 전 p1이 배경 저장했을 경우 대비
+    // 배경 감지 (p2가 늦게 접속한 경우)
     if (room.background && !bgApplied) {
       bgApplied = true
       applyBackground(room.background)
@@ -133,12 +133,15 @@ function listenReady() {
 
     const r1 = !!room.intro_ready_p1
     const r2 = !!room.intro_ready_p2
-    bothReady = r1 && r2
 
-    if (touched && (!r1 || !r2)) readyStatus.innerText = "상대방을 기다리는 중..."
+    // opponentReady는 한번 true되면 false로 안 돌아감
+    // → intro_ready 필드가 나중에 초기화돼도 영향 없음
+    if (r1 && r2) opponentReady = true
 
-    // 내 인트로가 끝난 상태에서 상대방 ready가 뒤늦게 도착한 경우
-    if (bothReady && introDone) startBattle()
+    if (touched && !opponentReady) readyStatus.innerText = "상대방을 기다리는 중..."
+
+    // 내 인트로가 끝난 상태에서 상대방 ready 도착 → 배틀 시작
+    if (opponentReady && introDone) startBattle()
   })
 }
 
@@ -175,12 +178,11 @@ async function playVsIntro(room) {
   await wait(5000)
   introDone = true
 
-  if (bothReady) {
-    // 상대방도 이미 ready → 바로 배틀 시작
+  if (opponentReady) {
+    // 상대방도 이미 ready → 바로 배틀
     startBattle()
   } else {
-    // 상대방 아직 대기 중 → 희미하게 + 메시지 표시
-    // listenReady의 onSnapshot이 상대 ready 감지하면 startBattle() 호출
+    // 상대방 아직 대기 중 → listenReady에서 처리
     vsScreen.style.opacity = "0.3"
     readyStatus.style.cssText = "color:white; font-size:clamp(1rem,3vw,1.4rem); position:absolute; bottom:10vh; width:100%; text-align:center; z-index:10;"
     readyStatus.innerText = "상대방을 기다리는 중..."
@@ -193,7 +195,7 @@ function startBattle() {
   document.getElementById("battle-screen").classList.add("visible")
   setTimeout(() => {
     overlay.classList.add("hidden")
-    updateDoc(roomRef, { intro_ready_p1: false, intro_ready_p2: false }).catch(() => {})
+    // intro_ready 초기화는 leaveGame()에서만 → 조기 초기화로 인한 버그 방지
   }, 800)
 }
 
