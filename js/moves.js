@@ -111,7 +111,7 @@ export const moves = {
 
   // ───── 강철 ─────
   "아이언헤드": { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
-  "메탈크로":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
+  "메탈크로우":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
   "불릿펀치":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
   "플래시캐논": { power: 40, type: "강철", accuracy: 100, alwaysHit: true,  effect: null },
 
