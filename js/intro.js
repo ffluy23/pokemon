@@ -235,40 +235,41 @@ async function skipIntro() {
 }
 
 function showBgmToast() {
-  // 이미 있으면 스킵
   if (document.getElementById("bgm-toast")) return
 
-  const toast = document.createElement("div")
-  toast.id = "bgm-toast"
-  toast.innerText = "🎵 탭하여 브금 재생"
-  toast.style.cssText = `
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.75); color: #fff;
-    padding: 10px 20px; border-radius: 999px;
-    font-size: 14px; z-index: 9999;
-    pointer-events: none;
-    animation: fadeInUp 0.3s ease;
-  `
-
-  // fadeInUp 키프레임이 없으면 추가
   if (!document.getElementById("bgm-toast-style")) {
     const s = document.createElement("style")
     s.id = "bgm-toast-style"
-    s.textContent = `@keyframes fadeInUp { from{opacity:0;transform:translateX(-50%) translateY(10px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }`
+    s.textContent = `
+      @keyframes fadeInUp {
+        from { opacity:0; transform:translateX(-50%) translateY(10px) }
+        to   { opacity:1; transform:translateX(-50%) translateY(0) }
+      }
+      #bgm-toast {
+        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+        background: rgba(0,0,0,0.8); color: #fff;
+        padding: 12px 24px; border-radius: 999px;
+        font-size: 14px; z-index: 9999;
+        border: none; cursor: pointer;
+        animation: fadeInUp 0.3s ease;
+        white-space: nowrap;
+      }
+    `
     document.head.appendChild(s)
   }
 
-  document.body.appendChild(toast)
+  const btn = document.createElement("button")
+  btn.id = "bgm-toast"
+  btn.innerText = "🎵 탭하여 브금 재생"
 
-  const resume = () => {
+  // onclick으로 등록 → 모바일 제스처 컨텍스트 확실히 유지
+  btn.onclick = () => {
     bgmAudio.play().catch(() => {})
-    toast.remove()
-    document.removeEventListener("click",      resume)
-    document.removeEventListener("touchstart", resume)
+    btn.remove()
   }
-  document.addEventListener("click",      resume)
-  document.addEventListener("touchstart", resume)
 
-  // 5초 후 자동 제거
-  setTimeout(() => toast.remove(), 5000)
+  document.body.appendChild(btn)
+
+  // 10초 후 자동 제거
+  setTimeout(() => btn.remove(), 10000)
 }
