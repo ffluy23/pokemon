@@ -6,7 +6,6 @@
   <title>배틀룸 1</title>
   <link rel="stylesheet" href="../css/style.css">
   <style>
-    /* battleroom1.html */
     /* ══ 인트로 오버레이 ══ */
     #intro-overlay {
       position: fixed; inset: 0; z-index: 1000;
@@ -16,7 +15,6 @@
     #intro-overlay.fade-out { opacity: 0; pointer-events: none; }
     #intro-overlay.hidden   { display: none; }
 
-    /* 터치 대기 */
     #touch-screen {
       position: absolute; inset: 0;
       display: flex; flex-direction: column;
@@ -33,7 +31,6 @@
     }
     @keyframes blink { 0%,100%{opacity:.2} 50%{opacity:1} }
 
-    /* VS 인트로 */
     #vs-screen { position: absolute; inset: 0; display: none; }
     #vs-screen.show { display: block; }
 
@@ -66,11 +63,11 @@
     }
 
     .vs-slide {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 clamp(10px,5vw,80px);
-  box-sizing: border-box;
-}
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 clamp(10px,5vw,80px);
+      box-sizing: border-box;
+    }
     .vs-left, .vs-right { width: 42%; color: white; opacity: 0; }
     .vs-left  { transform: translateX(-150%) scale(1.2); text-align: left; }
     .vs-right { transform: translateX( 150%) scale(1.2); text-align: right; }
@@ -117,69 +114,172 @@
       @keyframes driftRight { from{transform:translateX(0)} to{transform:translateX(40px)} }
     }
 
-    /* ══ 배틀 화면 ══ */
-    #battle-screen { opacity: 0; transition: opacity 0.8s ease; }
-    #battle-screen.visible { opacity: 1; }
-
-    #dice-wrap { display:none; justify-content:center; align-items:center; gap:40px; margin:20px 0; }
-    .dice-box { text-align:center; }
-    .dice-box span { display:block; font-size:12px; color:gray; margin-bottom:4px; }
-    .dice-num { font-size:64px; font-weight:bold; color:#e63946; min-width:80px; text-align:center; }
-    #turn-display { font-size:20px; font-weight:bold; margin:8px 0; }
-    #turn-count   { font-size:14px; color:gray; }
-
-    /* ══ 기술 버튼 ══ */
-    #move-buttons {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      max-width: 320px;
-      margin: 12px 0;
-    }
-    #move-buttons button {
-      /* 이미지 버튼 */
-      width: 300px;
-      height: 100px;             
-      padding: 0;
-      background-image: url('https://past-amethyst-ehkdgz3cu8.edgeone.app/제목%20없음-3.png');
-      background-size: 100% 100%;
-      background-color: transparent;
+    body {
+      /* 배경은 JS에서 Firestore background 필드로 동적 적용 */
+      background-color: #1a1a2e;
+      background-size: cover;
+      background-position: center;
       background-repeat: no-repeat;
-      border: none;
-      /* 텍스트 */
-      font-size: 12px;
-      font-weight: bold;
-      color: white;
-      text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
-      white-space: pre-line;
-      text-align: center;
-      line-height: 1.4;
-      cursor: pointer;
-      /* 수직 중앙 정렬 */
+      transition: background-image 0.5s ease;
+      padding: 0;
+      min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-    #move-buttons button:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-    #move-buttons button:not(:disabled):hover {
-      filter: brightness(1.15);
-    }
-    #move-buttons button:not(:disabled):active {
-      filter: brightness(0.9);
-      transform: scale(0.97);
+      font-family: 'Mona12', sans-serif;
     }
 
-    #battle-log { width:100%; max-height:150px; overflow-y:auto; border:1px solid #ccc; padding:8px; background:#f9f9f9; font-size:14px; box-sizing:border-box; }
-    #battle-log p { margin:2px 0; }
-    button:disabled { opacity:0.4; cursor:not-allowed; }
-    #leaveBtn { display:none; }
-    .hp-bar-wrap { width:100%; max-width:240px; background:#333; border-radius:4px; height:10px; margin:4px 0 6px; overflow:hidden; }
-    .hp-bar { height:100%; width:100%; background:#4caf50; border-radius:4px; transition:width 0.5s ease,background-color 0.4s ease; }
-    .portrait-img { width:120px; height:120px; object-fit:contain; display:none; opacity:0; transition:opacity 0.35s ease; }
-    .portrait-img.visible { display:block; opacity:1; }
+    #battle-wrapper {
+      background-color: #fff;
+      width: 960px;
+      max-width: 98vw;
+      padding: 18px;
+      box-sizing: border-box;
+      border: 1px solid #444;
+      border-radius: 12px;
+    }
+
+    #battle-screen {
+      opacity: 0;
+      transition: opacity 0.8s ease;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 14px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #battle-screen.visible { opacity: 1; }
+
+    .section-label { font-size: 11px; color: #999; margin: 0 0 4px 2px; }
+
+    #my-col {
+      display: flex; flex-direction: column;
+      align-items: flex-start; gap: 8px; flex: 0 0 300px;
+    }
+    #my-pokemon-area {
+      display: flex; flex-direction: column;
+      align-items: flex-start; gap: 6px; width: 100%;
+    }
+    #bottom-left-row {
+      display: flex; flex-direction: row;
+      align-items: flex-start; gap: 8px; width: 100%;
+    }
+    #bench-col { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+
+    /* ══ 기술 버튼 — pill ══ */
+    #move-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: 1; }
+    #move-buttons button {
+      height: 50px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: none;
+      color: white;
+      white-space: normal;
+      text-align: center;
+      line-height: 1.2;
+      cursor: pointer;
+      --btn-color: #a0a0a0;
+      background: var(--btn-color);
+      box-shadow: inset 0 0 0 2px white, 0 0 0 2px var(--btn-color);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+      transition: filter 0.15s ease, transform 0.1s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+    #move-buttons button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #move-buttons button:not(:disabled):hover  { filter: brightness(1.1); transform: scale(1.05); }
+    #move-buttons button:not(:disabled):active { filter: brightness(0.9); transform: scale(0.97); }
+
+    #enemy-col {
+      display: flex; flex-direction: column;
+      align-items: flex-end; gap: 8px; flex: 0 0 300px;
+    }
+    #turn-area { text-align: center; width: 100%; }
+    #turn-display { font-size: 15px; font-weight: bold; color: #fff; }
+    #turn-count   { font-size: 12px; color: #888; }
+
+    #dice-wrap { display: none; justify-content: center; align-items: center; gap: 30px; width: 100%; }
+    .dice-box { text-align: center; }
+    .dice-box span { display: block; font-size: 11px; color: #888; margin-bottom: 2px; }
+    .dice-num { font-size: 52px; font-weight: bold; color: #e63946; min-width: 60px; text-align: center; }
+
+    #enemy-pokemon-area { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; width: 100%; }
+
+    #bench-container { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+    #bench-container button {
+      position: relative; width: 100%; height: 56px;
+      padding: 0 8px 0 52px; background-color: transparent; border: none;
+      cursor: pointer; font-size: 11px; font-weight: bold; color: #fff;
+      text-shadow: 1px 1px 4px rgba(0,0,0,0.95); text-align: left;
+      box-sizing: border-box; display: flex; align-items: center;
+      overflow: hidden; transition: filter 0.2s ease;
+    }
+    #bench-container button::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: url('https://regular-azure-qtbkpkmn9y.edgeone.app/%EC%A0%9C%EB%AA%A9%20%EC%97%86%EC%9D%8C-5.png');
+      background-size: contain; background-repeat: no-repeat; background-position: center;
+      opacity: 0.35; transition: opacity 0.2s ease; pointer-events: none;
+    }
+    #bench-container button:not(:disabled):hover::before { opacity: 1; }
+    #bench-container button:not(:disabled):hover { filter: brightness(1.1); }
+    #bench-container button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #bench-container button:disabled::before { opacity: 0.2; }
+
+    #right-panel { display: flex; flex-direction: column; gap: 8px; flex: 0 0 30%; min-width: 0; }
+    #player-names-row { display: flex; justify-content: space-between; font-size: 12px; color: #aaa; }
+
+    #battle-log {
+      width: 100%; height: 220px; overflow-y: auto;
+      border: 1px solid #444; border-radius: 6px;
+      padding: 8px; font-size: 13px; box-sizing: border-box; line-height: 1.6;
+    }
+    #battle-log p { margin: 2px 0; }
+
+    #spectator-list {
+      width: 100%; padding: 6px 8px;
+      border: 1px solid #333; border-radius: 6px;
+      font-size: 12px; color: #888; box-sizing: border-box;
+    }
+
+    /* ── HP 카드 ── */
+    .hp-card {
+      width: 100%; max-width: 240px;
+      padding: 7px 14px 8px; box-sizing: border-box;
+      border: 2px solid #555; border-radius: 16px;
+      display: flex; flex-direction: column; gap: 5px;
+      background: rgba(255,255,255,0.04);
+    }
+    .hp-card-top { display: flex; justify-content: space-between; align-items: center; }
+    .hp-card-name {
+      font-size: 12px; color: #333;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 58%;
+    }
+    .hp-card-number { font-size: 11px; color: #333; white-space: nowrap; }
+    .hp-bar-wrap {
+      width: 100%; background: rgba(0,0,0,0.15);
+      border-radius: 999px; height: 6px; overflow: hidden;
+    }
+    .hp-bar {
+      height: 100%; width: 100%; background: #4caf50;
+      border-radius: 999px; transition: width 0.5s ease, background-color 0.4s ease;
+    }
+
+    .portrait-img {
+      width: 120px; height: 120px; object-fit: contain;
+      display: none; opacity: 0; transition: opacity 0.35s ease;
+    }
+    .portrait-img.visible { display: block; opacity: 1; }
+
+    #leaveBtn {
+      display: none; margin-top: 8px; padding: 7px 16px;
+      background: #c0392b; color: #fff; border: none;
+      border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: bold;
+    }
+    #leaveBtn:hover { background: #e74c3c; }
 
     /* 공격 이펙트 */
     .attacker-flash { animation: attackerPulse 0.25s ease-out; }
@@ -223,56 +323,77 @@
   </div>
 
   <!-- ══ 배틀 화면 ══ -->
+  <div id="battle-wrapper">
   <div id="battle-screen">
-    <div id="dice-wrap">
-      <div class="dice-box" id="dice-box-p1">
-        <span id="p1-name-dice">Player1</span>
-        <div class="dice-num" id="dice-p1">?</div>
+
+    <div id="my-col">
+      <div id="my-pokemon-area">
+        <img id="my-portrait" class="portrait-img" alt="" />
+        <div class="hp-card">
+          <div class="hp-card-top">
+            <span class="hp-card-name" id="my-active-name">-</span>
+            <span class="hp-card-number" id="my-active-hp">-/-</span>
+          </div>
+          <div class="hp-bar-wrap"><div class="hp-bar" id="my-hp-bar"></div></div>
+        </div>
       </div>
-      <div class="dice-box" id="dice-box-p2">
-        <span id="p2-name-dice">Player2</span>
-        <div class="dice-num" id="dice-p2">?</div>
+      <div id="bottom-left-row">
+        <div id="move-buttons">
+          <button id="move-btn-0" disabled>-</button>
+          <button id="move-btn-1" disabled>-</button>
+          <button id="move-btn-2" disabled>-</button>
+          <button id="move-btn-3" disabled>-</button>
+        </div>
+        <div id="bench-col">
+          <p class="section-label">교체</p>
+          <div id="bench-container"></div>
+        </div>
       </div>
-      <div class="dice-box" id="dice-box-hit" style="display:none;">
-        <span>명중 판정</span>
-        <div class="dice-num" id="dice-hit">?</div>
+      <button id="leaveBtn">방 나가기</button>
+    </div>
+
+    <div id="enemy-col">
+      <div id="turn-area">
+        <div id="player-names-row">
+          <span id="p1-name">Player1</span>
+          <span id="p2-name">Player2</span>
+        </div>
+        <div id="turn-display">대기 중...</div>
+        <div id="turn-count"></div>
+      </div>
+      <div id="dice-wrap">
+        <div class="dice-box" id="dice-box-p1">
+          <span id="p1-name-dice">Player1</span>
+          <div class="dice-num" id="dice-p1">?</div>
+        </div>
+        <div class="dice-box" id="dice-box-p2">
+          <span id="p2-name-dice">Player2</span>
+          <div class="dice-num" id="dice-p2">?</div>
+        </div>
+        <div class="dice-box" id="dice-box-hit" style="display:none;">
+          <span>명중 판정</span>
+          <div class="dice-num" id="dice-hit">?</div>
+        </div>
+      </div>
+      <div id="enemy-pokemon-area">
+        <div class="hp-card">
+          <div class="hp-card-top">
+            <span class="hp-card-name" id="enemy-active-name">-</span>
+            <span class="hp-card-number" id="enemy-active-hp"></span>
+          </div>
+          <div class="hp-bar-wrap"><div class="hp-bar" id="enemy-hp-bar"></div></div>
+        </div>
+        <img id="enemy-portrait" class="portrait-img" alt="" />
       </div>
     </div>
-    <div id="turn-display">대기 중...</div>
-    <div id="turn-count"></div>
-    <div id="spectator-list"></div>
-    <div><span id="p1-name">Player1</span> vs <span id="p2-name">Player2</span></div>
-    <hr>
-    <div id="enemy-pokemon-area">
-      <h3>상대 포켓몬</h3>
-      <img id="enemy-portrait" class="portrait-img" alt="" />
-      <p id="enemy-active-name">-</p>
-      <div class="hp-bar-wrap"><div class="hp-bar" id="enemy-hp-bar"></div></div>
-      <p id="enemy-active-hp"></p>
-    </div>
-    <hr>
-    <div id="my-pokemon-area">
-      <h3>내 포켓몬</h3>
-      <img id="my-portrait" class="portrait-img" alt="" />
-      <p id="my-active-name">-</p>
-      <div class="hp-bar-wrap"><div class="hp-bar" id="my-hp-bar"></div></div>
-      <p id="my-active-hp">HP: - / -</p>
-    </div>
-    <div id="move-buttons">
-      <button id="move-btn-0" disabled>-</button>
-      <button id="move-btn-1" disabled>-</button>
-      <button id="move-btn-2" disabled>-</button>
-      <button id="move-btn-3" disabled>-</button>
-    </div>
-    <div>
-      <h4>교체할 포켓몬</h4>
-      <div id="bench-container"></div>
-    </div>
-    <button id="leaveBtn">방 나가기</button>
-    <div>
-      <h4>배틀 로그</h4>
+
+    <div id="right-panel">
+      <p class="section-label">배틀 로그</p>
       <div id="battle-log"></div>
+      <div id="spectator-list"></div>
     </div>
+
+  </div>
   </div>
 
   <script>const ROOM_ID = "battleroom1"</script>
