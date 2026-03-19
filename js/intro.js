@@ -10,7 +10,17 @@ const BGM_LIST = [
   "https://curly-indigo-f4dhznoudl.edgeone.app/PerituneMaterial_Rapid4.mp3"
 ]
 
+const BG_LIST = [
+  "https://foolish-rose-9l9aoow1vy.edgeone.app/배경1%20(1).jpg",
+  "https://old-olive-m53ztzpdmh.edgeone.app/배경2%20(1).jpg",
+  "https://driving-moccasin-bfvl5nk24u.edgeone.app/배경3%20(1).jpg",
+  "https://yielding-green-qv9brnrm3e.edgeone.app/배경4.jpg",
+  "https://tricky-gold-ws4fc7rxqb.edgeone.app/배경5.jpg",
+  "https://geographical-black-tvekomtcvt.edgeone.app/배경6.jpg"
+]
+
 export let bgmAudio = null
+let bgApplied = false
 
 export function fadeBgmOut(duration = 2000) {
   if (!bgmAudio) return
@@ -26,16 +36,23 @@ export function fadeBgmOut(duration = 2000) {
   }, 50)
 }
 
+function applyBackground(url) {
+  document.body.style.backgroundImage = `url('${url}')`
+  document.body.style.backgroundSize = "cover"
+  document.body.style.backgroundPosition = "center"
+  document.body.style.backgroundRepeat = "no-repeat"
+}
+
 const overlay     = document.getElementById("intro-overlay")
 const touchScreen = document.getElementById("touch-screen")
 const readyStatus = document.getElementById("touch-ready-status")
 const vsScreen    = document.getElementById("vs-screen")
 const roomRef     = doc(db, "rooms", ROOM_ID)
 
-// URL 파라미터로 관전자 판별 — Firestore 상태에 의존하지 않음
 const isSpectatorParam = new URLSearchParams(location.search).get("spectator") === "true"
 
 let myUid     = null
+let mySlot    = null
 let touched   = false
 let introDone = false
 let bothReady = false
@@ -46,13 +63,15 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) return
   myUid = user.uid
 
-  // 관전자면 인트로 스킵
   if (isSpectatorParam) {
     skipIntro()
     return
   }
 
-  // 플레이어는 Firestore 상태 무관하게 항상 인트로 표시
+  const snap = await getDoc(roomRef)
+  const room = snap.data()
+  mySlot = room?.player1_uid === myUid ? "p1" : "p2"
+
   bindTouch()
   listenReady()
 })
@@ -77,13 +96,29 @@ async function onTouched() {
   bgmAudio.volume = 0.7
   bgmAudio.play().catch(() => {})
 
-  // VS 인트로 즉시 재생
   const snap = await getDoc(roomRef)
   const room = snap.data()
+
+  // ── 배경 처리
+  // p1: 랜덤 선택 → Firestore 저장 → 즉시 적용
+  // p2: 이미 저장된 배경 읽어서 적용 (없으면 listenReady에서 감지)
+  if (!bgApplied) {
+    if (mySlot === "p1") {
+      const bgUrl = BG_LIST[Math.floor(Math.random() * BG_LIST.length)]
+      await updateDoc(roomRef, { background: bgUrl })
+      applyBackground(bgUrl)
+      bgApplied = true
+    } else if (room?.background) {
+      applyBackground(room.background)
+      bgApplied = true
+    }
+  }
+
+  // VS 인트로 즉시 재생
   playVsIntro(room)
 
   // Firestore에 내 ready 마킹
-  const field = room?.player1_uid === myUid ? "intro_ready_p1" : "intro_ready_p2"
+  const field = mySlot === "p1" ? "intro_ready_p1" : "intro_ready_p2"
   await updateDoc(roomRef, { [field]: true })
 }
 
@@ -92,14 +127,18 @@ function listenReady() {
     const room = snap.data()
     if (!room) return
 
+    // p2가 터치 전에 p1이 배경 저장했을 경우 대비
+    if (room.background && !bgApplied) {
+      bgApplied = true
+      applyBackground(room.background)
+    }
+
     const r1 = !!room.intro_ready_p1
     const r2 = !!room.intro_ready_p2
     bothReady = r1 && r2
 
-    if (!r1 && !r2)      readyStatus.innerText = ""
-    else if (!r1 || !r2) readyStatus.innerText = "상대방을 기다리는 중..."
+    if (touched && (!r1 || !r2)) readyStatus.innerText = "상대방을 기다리는 중..."
 
-    // 인트로 연출이 끝난 뒤 상대방 ready 도착 시 배틀 시작
     if (bothReady && introDone) startBattle()
   })
 }
@@ -111,7 +150,6 @@ async function playVsIntro(room) {
   touchScreen.style.display = "none"
   vsScreen.classList.add("show")
 
-  // display 전환 후 한 프레임 대기 → 애니메이션 정상 트리거
   await wait(50)
 
   const flash      = document.getElementById("vs-flash")
@@ -134,22 +172,20 @@ async function playVsIntro(room) {
   innerLeft.classList.add("drift-left")
   innerRight.classList.add("drift-right")
 
-  // 5초 연출 대기
   await wait(5000)
   introDone = true
 
   if (bothReady) {
     startBattle()
   } else {
-    // 상대방 아직 안 눌렀으면 대기 메시지
     vsScreen.style.opacity = "0.3"
-    readyStatus.style.cssText = "color:white; font-size:clamp(1rem,3vw,1.4rem); position:absolute; bottom:10vh; width:100%; text-align:center;"
+    readyStatus.style.cssText = "color:white; font-size:clamp(1rem,3vw,1.4rem); position:absolute; bottom:10vh; width:100%; text-align:center; z-index:10;"
     readyStatus.innerText = "상대방을 기다리는 중..."
   }
 }
 
 function startBattle() {
-  if (overlay.classList.contains("fade-out")) return  // 중복 방지
+  if (overlay.classList.contains("fade-out")) return
   overlay.classList.add("fade-out")
   document.getElementById("battle-screen").classList.add("visible")
   setTimeout(() => {
