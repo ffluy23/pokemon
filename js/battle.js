@@ -22,24 +22,6 @@ let mySlot   = null, myUid  = null, myTurn = false
 let gameStarted = false, diceShown = false, actionDone = false, gameOver = false
 let battleIntroSequenceStarted = false
 let lastHitEventTs = 0
-let bgApplied = false   // 배경 중복 적용 방지
-
-// ── 배경 이미지 목록
-const BG_LIST = [
-  "https://foolish-rose-9l9aoow1vy.edgeone.app/배경1%20(1).jpg",
-  "https://old-olive-m53ztzpdmh.edgeone.app/배경2%20(1).jpg",
-  "https://driving-moccasin-bfvl5nk24u.edgeone.app/배경3%20(1).jpg",
-  "https://yielding-green-qv9brnrm3e.edgeone.app/배경4.jpg",
-  "https://tricky-gold-ws4fc7rxqb.edgeone.app/배경5.jpg",
-  "https://geographical-black-tvekomtcvt.edgeone.app/배경6.jpg"
-]
-
-function applyBackground(url) {
-  document.body.style.backgroundImage = `url('${url}')`
-  document.body.style.backgroundSize = "cover"
-  document.body.style.backgroundPosition = "center"
-  document.body.style.backgroundRepeat = "no-repeat"
-}
 
 const isSpectator = new URLSearchParams(location.search).get("spectator") === "true"
 
@@ -224,18 +206,13 @@ function waitForBattleReady() {
 async function initTurn(data) {
   if (gameStarted) return
   gameStarted = true
-
-  // ── 배경 랜덤 선택 (p1만 실행) → Firestore에 저장 → 양쪽 동기화
-  const bgUrl = BG_LIST[Math.floor(Math.random() * BG_LIST.length)]
-
   const p1 = data.p1_entry[0], p2 = data.p2_entry[0]
   const r1 = rollD10(), r2 = rollD10()
   const fs = (p1.speed ?? 3) + r1 >= (p2.speed ?? 3) + r2 ? "p1" : "p2"
   await updateDoc(roomRef, {
     first_slot: fs,
     first_pokemon_name: fs === "p1" ? p1.name : p2.name,
-    p1_dice: r1, p2_dice: r2,
-    background: bgUrl   // ← 배경 저장
+    p1_dice: r1, p2_dice: r2
   })
 }
 
@@ -262,12 +239,6 @@ function listenRoom() {
     document.getElementById("p2-name").innerText = data.player2_name ?? "대기..."
     const spectEl = document.getElementById("spectator-list")
     if (spectEl) { const n = data.spectator_names ?? []; spectEl.innerText = n.length > 0 ? "관전: " + n.join(", ") : "" }
-
-    // ── 배경 적용 (Firestore background 필드 감지 → 양쪽 동시 적용)
-    if (data.background && !bgApplied) {
-      bgApplied = true
-      applyBackground(data.background)
-    }
 
     if (!data.p1_entry || !data.p2_entry) return
     const enemySlot = mySlot === "p1" ? "p2" : "p1"
@@ -343,7 +314,7 @@ async function leaveGame() {
     p1_active_idx: 0, p2_active_idx: 0, p1_dice: null, p2_dice: null,
     first_slot: null, first_pokemon_name: null, intro_done: false,
     intro_ready_p1: false, intro_ready_p2: false,
-    hit_event: null, background: null   // ← 배경 초기화
+    hit_event: null, background: null
   })
   location.href = "../main.html"
 }
@@ -367,7 +338,6 @@ function updateMoveButtons(data) {
     "벌레": "#9fa244", "고스트": "#684870", "드래곤": "#535ca8",
     "악": "#4c4948", "강철": "#69a9c7", "페어리": "#dab4d4"
   }
-
   const myPokemon = data[`${mySlot}_entry`]?.[data[`${mySlot}_active_idx`]]
   const fainted = !myPokemon || myPokemon.hp <= 0, movesArr = myPokemon?.moves ?? []
   for (let i = 0; i < 4; i++) {
@@ -386,7 +356,6 @@ function updateMoveButtons(data) {
     btn.style.setProperty("--btn-color", color)
     btn.style.background = color
     btn.style.boxShadow = `inset 0 0 0 2px white, 0 0 0 2px ${color}`
-
     if (isSpectator || fainted || move.pp <= 0 || !myTurn || actionDone) { btn.disabled = true; btn.onclick = null }
     else { btn.disabled = false; btn.onclick = () => useMove(i, data) }
   }
