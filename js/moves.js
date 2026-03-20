@@ -8,7 +8,6 @@
 //   - chance: 발동 확률 (0.0~1.0)
 //   - status: 상태이상 ("독" / "화상" / "마비" / "얼음")
 //   - volatile: 상태변화 ("혼란" / "풀죽음")
-//   - "drain75": 가한 피해의 75% 회복
 // rank: 랭크 변화 (없으면 undefined)
 //   자신 대상: atk / def / spd (양수 = 랭크업)
 //   상대 대상: targetAtk / targetDef / targetSpd (음수 = 랭크다운)
