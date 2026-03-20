@@ -49,9 +49,9 @@ export function applyMoveEffect(moveEffect, attacker, defender, damage = 0) {
 
   const msgs = []
 
-  // 흡수 (가한 피해의 75% 회복)
-  if (moveEffect === "drain75") {
-    const heal = Math.floor(damage * 0.75)
+  // 흡수 (가한 피해의 drain 비율만큼 회복)
+  if (moveEffect.drain) {
+    const heal = Math.floor(damage * moveEffect.drain)
     if (heal > 0) {
       attacker.hp = Math.min(attacker.maxHp ?? attacker.hp, attacker.hp + heal)
       msgs.push(`${attacker.name}${josa(attacker.name, "은는")} 체력을 흡수했다! (+${heal})`)
