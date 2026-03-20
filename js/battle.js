@@ -21,8 +21,21 @@ const logsRef = collection(db, "rooms", ROOM_ID, "logs")
 const SFX_DICE = "https://slippery-copper-mzpmcmc2ra.edgeone.app/soundreality-bicycle-bell-155622.mp3"
 const SFX_BTN  = "https://usual-salmon-mnqxptwyvw.edgeone.app/Pokemon%20(A%20Button)%20-%20Sound%20Effect%20(HD)%20(1)%20(1).mp3"
 
+// 효과음 미리 로드해서 캐시 — iOS onSnapshot에서도 재생 가능
+const sfxCache = {}
+function getSound(url) {
+  if (!sfxCache[url]) {
+    sfxCache[url] = new Audio(url)
+    sfxCache[url].load()
+  }
+  return sfxCache[url]
+}
+
 function playSound(url) {
-  const a = new Audio(url); a.volume = 0.6; a.play().catch(() => {})
+  const a = getSound(url)
+  a.currentTime = 0
+  a.volume = 0.6
+  a.play().catch(() => {})
 }
 
 function popDiceNum(el) {
@@ -334,6 +347,10 @@ function animateDualDice(p1Roll, p2Roll, onDone, p1Name, p2Name) {
 onAuthStateChanged(auth, async user => {
   if (!user) return
   myUid = user.uid
+
+  // 효과음 미리 로드 (iOS 대비)
+  getSound(SFX_DICE)
+  getSound(SFX_BTN)
   const roomSnap = await getDoc(roomRef), room = roomSnap.data()
   mySlot = room.player1_uid === myUid ? "p1" : "p2"
 
