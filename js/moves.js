@@ -31,7 +31,7 @@ export const moves = {
   "몸통박치기":     { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
   "하이퍼보이스":   { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
   "할퀴기":         { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
-  "속이기":         { power: 40, type: "노말", accuracy: 50, alwaysHit: false, skipEvasion: true, effect: { chance: 1, volatile: "풀죽음" } },
+  "속이기":         { power: 30, type: "노말", accuracy: 50, alwaysHit: false, skipEvasion: true, effect: { chance: 1, volatile: "풀죽음" } },
 
   // ───── 불 ─────
   "화염방사": { power: 50, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
@@ -82,8 +82,7 @@ export const moves = {
 
   // ───── 바위 ─────
   "스톤에지":   { power: 40, type: "바위", accuracy: 80, alwaysHit: false, effect: null },
-  "바위깨기":   { power: 30, type: "바위", accuracy: 80, alwaysHit: false, effect: null,
-                  rank: { targetDef: -2 } },  // 상대 방어 -2
+  "바위깨기":   { power: 30, type: "바위", accuracy: 80, alwaysHit: false, effect: null, rank: { targetDef: -1 } },
   "파워젬":     { power: 50, type: "바위", accuracy: 80, alwaysHit: false, effect: null },
   "록블라스트": { power: 40, type: "바위", accuracy: 90, alwaysHit: false, effect: null },
 
@@ -100,7 +99,7 @@ export const moves = {
   "시저크로스": { power: 40, type: "벌레", accuracy: 100, alwaysHit: false, effect: null },
 
   // ───── 고스트 ─────
-  "섀도볼":     { power: 40, type: "고스트", accuracy: 100, alwaysHit: false, effect: null },
+  "섀도볼":     { power: 50, type: "고스트", accuracy: 100, alwaysHit: false, effect: null, rank: { targetDef: -1 } },
   "나이트헤드": { power: 40, type: "고스트", accuracy: 100, alwaysHit: true,  effect: null },
   "섀도스니크": { power: 40, type: "고스트", accuracy: 100, alwaysHit: false, effect: null },
 
@@ -109,12 +108,13 @@ export const moves = {
   "역린":       { power: 40, type: "드래곤", accuracy: 100, alwaysHit: false, effect: { chance: 0.2, volatile: "혼란" } },
 
   // ───── 악 ─────
-  "악의파동": { power: 40, type: "악", accuracy: 100, alwaysHit: false, effect: { chance: 0.2, volatile: "풀죽음" } },
+  "악의파동": { power: 50, type: "악", accuracy: 100, alwaysHit: false, effect: { chance: 0.2, volatile: "풀죽음" } },
   "암타":     { power: 40, type: "악", accuracy: 100, alwaysHit: false, effect: null },
+  "바크아웃":     { power: 0, type: "악", accuracy: 95, alwaysHit: false, effect: null, rank: { targetAtk: -1 } },
 
   // ───── 강철 ─────
-  "아이언헤드": { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
-  "메탈크로우": { power: 40, type: "강철", accuracy: 95,  alwaysHit: false, effect: null, rank: { chance: 0.1, atk: 1 } }, 
+  "아이언테일": { power: 50, type: "강철", accuracy: 75, alwaysHit: false, effect: null, rank: { chance: 0.3, targetDef: -1 } },
+  "메탈크로우": { power: 40, type: "강철", accuracy: 95,  alwaysHit: false, effect: null, rank: { chance: 0.1, atk: 1 } },
   "불릿펀치":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
   "플래시캐논": { power: 40, type: "강철", accuracy: 100, alwaysHit: true,  effect: null },
 
