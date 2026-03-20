@@ -1,6 +1,6 @@
 // moves.js
 // 기술 사전
-// power: 기본 위력
+// power: 기본 위력 (0이면 랭크 전용 기술)
 // type: 기술 타입
 // accuracy: 명중률 (0~100, 퍼센트)
 // alwaysHit: true = 회피율 무시하고 반드시 명중
@@ -8,37 +8,37 @@
 //   - chance: 발동 확률 (0.0~1.0)
 //   - status: 상태이상 ("독" / "화상" / "마비" / "얼음")
 //   - volatile: 상태변화 ("혼란" / "풀죽음")
+//   - "drain75": 가한 피해의 75% 회복
 // rank: 랭크 변화 (없으면 undefined)
-//   - atk: 공격 랭크 변화 (양수 = 자신 랭크업, 음수 = 상대 랭크다운)
-//   - def: 방어 랭크 변화 (양수 = 자신 랭크업, 음수 = 상대 랭크다운)
-//   - spd: 스피드 랭크 변화 (양수 = 자신 랭크업, 음수 = 상대 랭크다운)
-//   ※ 랭크 기술은 공격(power > 0) 없이 단독 사용 → effect 없음
-//   ※ 칼춤: atk +3 (1회), +4 (2회) → 누적 시 최대 +4 보장
-//   ※ 코튼가드: def +2 (1회), +3 (2회) → 누적 시 최대 +3 보장
-//   ※ 고속이동: spd +3 (1회), +5 (2회) → 누적 시 최대 +5 보장
+//   자신 대상: atk / def / spd (양수 = 랭크업)
+//   상대 대상: targetAtk / targetDef / targetSpd (음수 = 랭크다운)
+//   chance: 발동 확률 (없으면 100%)
+//   turns: 지속 턴 (없으면 기본 2턴)
+//   ※ power: 0 → 자신 대상이면 accuracy만 판정, 상대 대상이면 회피까지 판정
+//   ※ power > 0 → 데미지 후 rank가 있으면 확률적으로 추가 적용
 
 export const moves = {
   // ───── 랭크 기술 ─────
   "칼춤":     { power: 0, type: "노말", accuracy: 100, alwaysHit: true, effect: null,
-                rank: { atk: 3 } },   // 1회 +3, 2회 누적 시 battle.js에서 최대 +4 클램프
+                rank: { atk: 3 } },
   "코튼가드": { power: 0, type: "노말", accuracy: 100, alwaysHit: true, effect: null,
-                rank: { def: 2 } },   // 1회 +2, 2회 누적 시 최대 +3 클램프
+                rank: { def: 2 } },
   "고속이동": { power: 0, type: "노말", accuracy: 100, alwaysHit: true, effect: null,
-                rank: { spd: 3 } },   // 1회 +3, 2회 누적 시 최대 +5 클램프
+                rank: { spd: 3 } },
 
   // ───── 노말 ─────
   "전광석화":       { power: 30, type: "노말", accuracy: 100, alwaysHit: true,  effect: null },
   "몸통박치기":     { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
   "하이퍼보이스":   { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
   "할퀴기":         { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
-  "속이기": { power: 40, type: "노말", accuracy: 100, alwaysHit: true, effect: { chance: 1, volatile: "풀죽음" } },
+  "속이기":         { power: 40, type: "노말", accuracy: 100, alwaysHit: true,  effect: { chance: 1, volatile: "풀죽음" } },
 
   // ───── 불 ─────
-  "화염방사":   { power: 50, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
-  "불꽃엄니":   { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
-  "열풍":       { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
-  "불대문자":   { power: 40, type: "불", accuracy: 85,  alwaysHit: false, effect: null },
-  "불꽃세례":   { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
+  "화염방사": { power: 50, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
+  "불꽃엄니": { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
+  "열풍":     { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
+  "불대문자": { power: 40, type: "불", accuracy: 85,  alwaysHit: false, effect: null },
+  "불꽃세례": { power: 40, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
 
   // ───── 물 ─────
   "거품광선":     { power: 40, type: "물", accuracy: 100, alwaysHit: false, effect: null },
@@ -81,9 +81,10 @@ export const moves = {
   "땅가르기": { power: 40, type: "땅", accuracy: 100, alwaysHit: false, effect: null },
 
   // ───── 바위 ─────
-  "스톤에지": { power: 40, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
-  "바위깨기": { power: 30, type: "바위", accuracy: 80,  alwaysHit: false, effect: null, rank: { def: -2 } },
-  "파워젬":   { power: 50, type: "바위", accuracy: 80,  alwaysHit: false, effect: null },
+  "스톤에지":   { power: 40, type: "바위", accuracy: 80, alwaysHit: false, effect: null },
+  "바위깨기":   { power: 30, type: "바위", accuracy: 80, alwaysHit: false, effect: null,
+                  rank: { targetDef: -2 } },  // 상대 방어 -2
+  "파워젬":     { power: 50, type: "바위", accuracy: 80, alwaysHit: false, effect: null },
   "록블라스트": { power: 40, type: "바위", accuracy: 90, alwaysHit: false, effect: null },
 
   // ───── 비행 ─────
@@ -113,14 +114,15 @@ export const moves = {
 
   // ───── 강철 ─────
   "아이언헤드": { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
-  "메탈크로우":   { power: 40, type: "강철", accuracy: 95, alwaysHit: false, effect: null, rank: { chance: 0.1, atk: 3 } },
+  "메탈크로우": { power: 40, type: "강철", accuracy: 95,  alwaysHit: false, effect: null,
+                  rank: { chance: 0.1, atk: 3 } },  // 10% 확률로 자신 공격 +3
   "불릿펀치":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
   "플래시캐논": { power: 40, type: "강철", accuracy: 100, alwaysHit: true,  effect: null },
 
   // ───── 페어리 ─────
   "문포스":     { power: 40, type: "페어리", accuracy: 100, alwaysHit: false, effect: null },
   "매지컬샤인": { power: 40, type: "페어리", accuracy: 100, alwaysHit: true,  effect: null },
-  "드레인키스": { power: 40, type: "페어리", accuracy: 100, alwaysHit: false, effect: "drain75"},
+  "드레인키스": { power: 40, type: "페어리", accuracy: 100, alwaysHit: false, effect: "drain75" },
 
   // ───── 날씨 ─────
   "맑게개다": { power: 0, type: "불",   accuracy: 100, alwaysHit: false, effect: { chance: 1.0, weather: "쾌청" } },
