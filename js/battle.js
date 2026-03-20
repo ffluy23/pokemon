@@ -161,7 +161,7 @@ function applyRankChanges(r, self, target) {
 
 function calcHit(attacker, moveInfo, defender) {
   if (Math.random() * 100 >= (moveInfo.accuracy ?? 100)) return { hit: false, hitType: "missed" }
-  if (moveInfo.alwaysHit) return { hit: true, hitType: "hit" }
+  if (moveInfo.alwaysHit || moveInfo.skipEvasion) return { hit: true, hitType: "hit" }
   const as = Math.max(1, (attacker.speed ?? 3) - getStatusSpdPenalty(attacker))
   const ds = Math.max(1, (defender.speed  ?? 3) - getStatusSpdPenalty(defender))
   const ev = Math.min(99, Math.max(0, 5 * (ds - as)) + Math.max(0, getActiveRank(defender, "spd")))
