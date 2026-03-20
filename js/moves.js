@@ -31,7 +31,7 @@ export const moves = {
   "몸통박치기":     { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
   "하이퍼보이스":   { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
   "할퀴기":         { power: 40, type: "노말", accuracy: 100, alwaysHit: false, effect: null },
-  "속이기":         { power: 40, type: "노말", accuracy: 100, alwaysHit: true,  effect: { chance: 1, volatile: "풀죽음" } },
+  "속이기":         { power: 40, type: "노말", accuracy: 50, alwaysHit: false, skipEvasion: true, effect: { chance: 1, volatile: "풀죽음" } },
 
   // ───── 불 ─────
   "화염방사": { power: 50, type: "불", accuracy: 100, alwaysHit: false, effect: { chance: 0.1, status: "화상" } },
@@ -114,8 +114,7 @@ export const moves = {
 
   // ───── 강철 ─────
   "아이언헤드": { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: { chance: 0.3, volatile: "풀죽음" } },
-  "메탈크로우": { power: 40, type: "강철", accuracy: 95,  alwaysHit: false, effect: null,
-                  rank: { chance: 0.1, atk: 3 } },  // 10% 확률로 자신 공격 +3
+  "메탈크로우": { power: 40, type: "강철", accuracy: 95,  alwaysHit: false, effect: null, rank: { chance: 0.1, atk: 1 } }, 
   "불릿펀치":   { power: 40, type: "강철", accuracy: 100, alwaysHit: false, effect: null },
   "플래시캐논": { power: 40, type: "강철", accuracy: 100, alwaysHit: true,  effect: null },
 
