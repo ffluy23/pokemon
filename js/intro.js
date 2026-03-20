@@ -196,18 +196,30 @@ async function playVsIntro(room) {
 }
 
 function startBattle() {
-  if (overlay.classList.contains("fade-out")) return  // 중복 방지
+  if (overlay.classList.contains("fade-out")) return
   overlay.classList.add("fade-out")
   document.getElementById("battle-screen").classList.add("visible")
   setTimeout(() => {
     overlay.classList.add("hidden")
-    // intro_ready 초기화는 leaveGame()에서만 → 조기 초기화로 인한 버그 방지
+    initVolumeSlider()
   }, 800)
+}
+
+function initVolumeSlider() {
+  const slider = document.getElementById("bgm-volume")
+  const label  = document.getElementById("bgm-volume-label")
+  if (!slider) return
+  slider.addEventListener("input", () => {
+    const v = parseFloat(slider.value)
+    if (bgmAudio) bgmAudio.volume = v
+    label.innerText = Math.round(v * 100) + "%"
+  })
 }
 
 async function skipIntro() {
   overlay.classList.add("hidden")
   document.getElementById("battle-screen").classList.add("visible")
+  initVolumeSlider()
 
   // 배경 복원 - 이미 로드된 데이터 우선, 없으면 onSnapshot 대기
   const snap = await getDoc(roomRef)
