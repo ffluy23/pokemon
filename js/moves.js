@@ -121,7 +121,7 @@ export const moves = {
   // ───── 페어리 ─────
   "문포스":     { power: 40, type: "페어리", accuracy: 100, alwaysHit: false, effect: null },
   "매지컬샤인": { power: 40, type: "페어리", accuracy: 100, alwaysHit: true,  effect: null },
-  "드레인키스": { power: 40, type: "페어리", accuracy: 100, alwaysHit: false, effect: { drain: 0.25 } },
+  "드레인키스": { power: 40, type: "페어리", accuracy: 100, alwaysHit: false, effect: { drain: 0.2 } },
 
   // ───── 날씨 ─────
   "맑게개다": { power: 0, type: "불",   accuracy: 100, alwaysHit: false, effect: { chance: 1.0, weather: "쾌청" } },
