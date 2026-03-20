@@ -81,7 +81,7 @@ export function checkPreActionStatus(pokemon) {
   }
   if (pokemon.status === "paralysis") {
     if (Math.random() < 0.25) {
-      msgs.push(`${pokemon.name}${josa(pokemon.name, "은는")} 마비 때문에 움직일 수 없다!`)
+      msgs.push(`${pokemon.name}${josa(pokemon.name, "은는")} 몸이 저려서 움직일 수 없다!`)
       return { blocked: true, msgs, statusCleared: false }
     }
   }
@@ -111,7 +111,7 @@ export function checkConfusion(pokemon) {
   if (Math.random() < 1 / 3) {
     const damage = (pokemon.attack ?? 3) * 2
     pokemon.hp = Math.max(0, pokemon.hp - damage)
-    const msgs = [`${pokemon.name}${josa(pokemon.name, "은는")} 혼란으로 자기 자신을 공격했다! (${damage} 데미지)`]
+    const msgs = [`${pokemon.name}${josa(pokemon.name, "은는")} 영문도 모른 채 자신을 공격했다! (${damage} 데미지)`]
     const fainted = pokemon.hp <= 0
     if (fainted) msgs.push(`${pokemon.name}${josa(pokemon.name, "은는")} 쓰러졌다!`)
     return { selfHit: true, damage, msgs, fainted }
