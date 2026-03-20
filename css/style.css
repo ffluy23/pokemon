@@ -1,22 +1,10 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+@import url('https://cdn.jsdelivr.net/gh/MonadABXY/mona-font/web/mona.css');
 
 body{
-font-family: 'Mona12', san-serif;
-margin-top:100px;
+font-family: 'Mona12', sans-serif;
 }
 
-input{
-display:block;
-margin:10px auto;
-padding:10px;
+button {
+    font-family: 'Mona12', sans-serif;
 }
 
-button{
-padding:10px 20px;
-margin:10px;
-cursor:pointer;
-}
