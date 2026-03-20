@@ -7,14 +7,6 @@
   <link rel="stylesheet" href="../css/style.css">
   <style>
     /* ══ 인트로 오버레이 ══ */
-@import url('https://cdn.jsdelivr.net/gh/MonadABXY/mona-font/web/mona.css');
-    
-*{
-   -webkit-tap-highlight-color: transparent;
-  font-family: 'Mona12', sans-serif;
-}
-    
-    
     #intro-overlay {
       position: fixed; inset: 0; z-index: 1000;
       background: #000; overflow: hidden;
@@ -132,6 +124,8 @@
 
     #battle-wrapper {
       background-color: #fff; width: 960px; max-width: 98vw;
+      height: 95vh;          /* ⭐ 화면 안에 강제 */
+  max-height: 95vh;
       padding: 18px; box-sizing: border-box;
       border: 1px solid #444; border-radius: 12px;
     }
@@ -163,6 +157,7 @@
       width: 100%; padding: 6px 8px;
       border: 1px solid #333; border-radius: 6px;
       font-size: 12px; color: #888; box-sizing: border-box;
+      text-align: right;
     }
 
     .section-label { font-size: 11px; color: #999; margin: 0 0 4px 2px; }
@@ -440,6 +435,8 @@
             <img id="enemy-portrait" class="portrait-img" alt="" />
           </div>
         </div>
+        <!-- ✅ 관전자 칸: 포트레이트 아래로 이동 -->
+        <div id="spectator-list"></div>
       </div>
 
     </div>
@@ -448,7 +445,6 @@
     <div id="battle-bottom">
       <p class="section-label">배틀 로그</p>
       <div id="battle-log"></div>
-      <div id="spectator-list"></div>
     </div>
 
   </div>
