@@ -336,13 +336,14 @@
 
 
     /* ══════════════════════════════════════
-       📱 모바일 반응형 (max-width: 600px)
+       모바일 반응형 (max-width: 600px)
     ══════════════════════════════════════ */
     @media (max-width: 600px) {
 
       body {
         align-items: flex-start;
         padding: 0;
+        -webkit-tap-highlight-color: transparent;
       }
 
       #battle-wrapper {
@@ -536,7 +537,7 @@
       @keyframes slideInLeft  { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
       @keyframes slideInRight { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
 
-      /* ── 화면 흔들림 모바일용 ── */
+      /* ── 화면 흔들림 모바일용 (더 작게) ── */
       @keyframes screenShake {
         0%  { transform: translate(0,0); }
         20% { transform: translate(-2px,1px); }
