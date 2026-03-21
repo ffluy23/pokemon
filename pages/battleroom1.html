@@ -1,39 +1,117 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>BattleRoom1</title>
-   <link rel="stylesheet" href="../css/style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Main</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  /* ── 게임 기록 모달 ── */
+  #log-modal {
+    display: none;
+    position: fixed; inset: 0; z-index: 999;
+    background: rgba(0,0,0,0.6);
+    align-items: center; justify-content: center;
+  }
+  #log-modal.open { display: flex; }
+
+  #log-modal-inner {
+    background: #1a1a2e;
+    border: 1px solid #444;
+    border-radius: 12px;
+    width: 520px; max-width: 95vw;
+    max-height: 80vh;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  #log-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid #333;
+  }
+  #log-modal-title {
+    font-size: 14px; font-weight: bold; color: #fff;
+  }
+  #log-modal-close {
+    background: none; border: none; color: #888;
+    font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  #log-modal-close:hover { color: #fff; }
+
+  #log-modal-body {
+    padding: 14px 18px;
+    overflow-y: auto;
+    flex: 1;
+    line-height: 1.8;
+    font-size: 13px;
+    color: #ccc;
+  }
+  #log-modal-body p { margin: 2px 0; }
+
+  /* ── 게임 기록 목록 ── */
+  #game-log-section {
+    margin-top: 32px;
+  }
+  #game-log-section h3 {
+    font-size: 13px; color: #888;
+    margin: 0 0 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  #game-log-list {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .game-log-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid #333;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .game-log-item:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: #555;
+  }
+  .game-log-vs {
+    font-size: 13px; font-weight: bold; color: #fff;
+  }
+  .game-log-meta {
+    font-size: 11px; color: #666;
+  }
+  #game-log-empty {
+    font-size: 12px; color: #555; padding: 8px 0;
+  }
+</style>
 </head>
 <body>
+<h2>Battle Rooms</h2>
+<button onclick="enterRoom(1)">BattleRoom1</button>
+<button onclick="enterRoom(2)">BattleRoom2</button>
+<button onclick="enterRoom(3)">BattleRoom3</button>
 
-  <h2>Battle Room 1</h2>
+<!-- 게임 기록 목록 -->
+<div id="game-log-section">
+  <h3>게임 기록</h3>
+  <div id="game-log-list">
+    <div id="game-log-empty">불러오는 중...</div>
+  </div>
+</div>
 
-  <!-- 플레이어 -->
-  <div id="player1">Player1: 대기...</div>
-  <div id="player2">Player2: 대기...</div>
+<!-- 로그 모달 -->
+<div id="log-modal">
+  <div id="log-modal-inner">
+    <div id="log-modal-header">
+      <span id="log-modal-title">게임 로그</span>
+      <button id="log-modal-close">✕</button>
+    </div>
+    <div id="log-modal-body"></div>
+  </div>
+</div>
 
-  <hr>
-
-  <!-- 관전자 목록 -->
-  <div id="spectator-list">관전자 없음</div>
-
-  <hr>
-
-  <!-- 교체 요청 표시 (플레이어에게 뜸) -->
-  <div id="swap-request-display"></div>
-
-  <!-- 버튼 -->
-  <button id="readyBtn">Ready</button>
-  <button id="leaveBtn">Leave</button>
-  <!-- 관전자 전용: 자리 교체 요청 버튼 (기본 숨김) -->
-  <button id="swapBtn" style="display:none;">플레이어 자리 요청</button>
-
-  <script>
-    const ROOM_ID = "battleroom1"
-  </script>
-  <script type="module" src="../js/firebase.js"></script>
-  <script type="module" src="../js/battleroom.js"></script>
-
+<script type="module" src="js/firebase.js"></script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
