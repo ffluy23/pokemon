@@ -104,13 +104,10 @@ function openLogModal(game) {
 }
 
 // ── 모달 닫기
-document.getElementById("log-modal-close").onclick = () => {
-  document.getElementById("log-modal").classList.remove("open")
-}
-document.getElementById("log-modal").onclick = (e) => {
-  if (e.target === e.currentTarget)
-    e.currentTarget.classList.remove("open")
-}
+const closeBtn  = document.getElementById("log-modal-close")
+const logModal  = document.getElementById("log-modal")
+if (closeBtn)  closeBtn.onclick = () => logModal.classList.remove("open")
+if (logModal)  logModal.onclick = (e) => { if (e.target === e.currentTarget) e.currentTarget.classList.remove("open") }
 
 // ── 로그인 상태 확인 후 로드
 onAuthStateChanged(auth, user => {
