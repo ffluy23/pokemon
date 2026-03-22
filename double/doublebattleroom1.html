@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>더블배틀룸 #1</title>
+</head>
+<body>
+<h2>더블배틀룸 #1</h2>
+
+<div class="teams">
+  <div class="team">
+    <h3>🔵 팀 A</h3>
+    <div class="slot" id="slot-p1">대기...</div>
+    <div class="slot" id="slot-p2">대기...</div>
+  </div>
+  <div class="team">
+    <h3>🔴 팀 B</h3>
+    <div class="slot" id="slot-p3">대기...</div>
+    <div class="slot" id="slot-p4">대기...</div>
+  </div>
+</div>
+
+<div class="btns">
+  <button id="readyBtn">준비 완료</button>
+  <button id="leaveBtn">나가기</button>
+  <button id="swapBtn" style="display:none">자리 교체 요청</button>
+</div>
+
+<div id="msg"></div>
+<div id="swap-request-display"></div>
+<div id="spectator-list"></div>
+
+<script type="module">
+  window.ROOM_ID = "doublebattleroom1"
+  window.BATTLE_URL = "../doublegames/doublebattle1.html"
+</script>
+<script type="module" src="../double/doublebattleroom.js"></script>
+</body>
+</html>
