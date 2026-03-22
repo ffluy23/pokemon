@@ -10,6 +10,10 @@
 //   싱크로나이즈 - 공격받을 때 피해 1/2씩 분산 (양측 동의 필요)
 
 import { auth, db } from "../js/firebase.js"
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+import {
+  doc, getDoc, updateDoc, onSnapshot, arrayUnion, setDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 import { moves } from "../js/moves.js"
 import { getTypeMultiplier } from "../js/typeChart.js"
 import {
@@ -17,11 +21,6 @@ import {
   applyMoveEffect, checkPreActionStatus, checkConfusion,
   applyEndOfTurnDamage, applyWeatherEffect, getStatusSpdPenalty
 } from "../js/effecthandler.js"
-import {
-  statusName, josa,
-  applyMoveEffect, checkPreActionStatus, checkConfusion,
-  applyEndOfTurnDamage, applyWeatherEffect, getStatusSpdPenalty
-} from "./effecthandler.js"
 
 // ────────────────────────────────────────────────
 // 상수 / 전역
@@ -34,25 +33,24 @@ const isSpec  = new URLSearchParams(location.search).get("spectator") === "true"
 
 const roomRef = doc(db, "double", ROOM_ID)
 let myUid  = null
-let mySlot = null   // "p1" | "p2" | "p3" | "p4" | null(관전)
+let mySlot = null
 let gameRef  = null
 let logSeq   = 0
 
-// 동시 액션 방지
 let actionDone  = false
-let gameStarted = false   // initGame 중복 방지 (p1만 실행)
+let gameStarted = false
 let redirecting = false
 
 // ────────────────────────────────────────────────
 // 유틸
 // ────────────────────────────────────────────────
-const wait   = ms => new Promise(r => setTimeout(r, ms))
-const rollD10 = () => Math.floor(Math.random() * 10) + 1
-const teamOf  = s => TEAM_A.includes(s) ? "A" : "B"
-const allyOf  = s => (TEAM_A.includes(s) ? TEAM_A : TEAM_B).find(x => x !== s)
+const wait        = ms => new Promise(r => setTimeout(r, ms))
+const rollD10     = () => Math.floor(Math.random() * 10) + 1
+const teamOf      = s => TEAM_A.includes(s) ? "A" : "B"
+const allyOf      = s => (TEAM_A.includes(s) ? TEAM_A : TEAM_B).find(x => x !== s)
 const enemyTeamOf = s => TEAM_A.includes(s) ? TEAM_B : TEAM_A
-const isAllFainted = arr => arr.every(p => p.hp <= 0)
-const teamFainted  = (entries, team) => team.every(s => entries[s][0].hp <= 0)
+const isAllFainted  = arr => arr.every(p => p.hp <= 0)
+const teamFainted   = (entries, team) => team.every(s => entries[s][0].hp <= 0)
 
 function defaultRanks() {
   return { atk: 0, atkTurns: 0, def: 0, defTurns: 0, spd: 0, spdTurns: 0 }
@@ -89,19 +87,19 @@ function calcHit(atk, moveInfo, def) {
 function calcDamage(atk, moveName, def, atkRank = 0, defRank = 0) {
   const move = moves[moveName]
   if (!move) return { damage: 0, multiplier: 1, critical: false }
-  const dice    = rollD10()
+  const dice     = rollD10()
   const defTypes = Array.isArray(def.type) ? def.type : [def.type]
   let multiplier = 1
   for (const dt of defTypes) multiplier *= getTypeMultiplier(move.type, dt)
   if (multiplier === 0) return { damage: 0, multiplier: 0, critical: false }
   const atkTypes = Array.isArray(atk.type) ? atk.type : [atk.type]
-  const stab   = atkTypes.includes(move.type)
-  const base   = (move.power ?? 40) + (atk.attack ?? 3) * 4 + dice
-  const raw    = Math.floor(base * multiplier * (stab ? 1.3 : 1))
-  const aAfter = Math.max(0, raw + Math.max(-raw, atkRank))
-  const dAfter = Math.max(0, aAfter - (def.defense ?? 3) * 5)
-  const baseDmg= Math.max(0, dAfter - Math.min(3, Math.max(0, defRank)) * 3)
-  const crit   = Math.random() * 100 < Math.min(100, (atk.attack ?? 3) * 2)
+  const stab     = atkTypes.includes(move.type)
+  const base     = (move.power ?? 40) + (atk.attack ?? 3) * 4 + dice
+  const raw      = Math.floor(base * multiplier * (stab ? 1.3 : 1))
+  const aAfter   = Math.max(0, raw + Math.max(-raw, atkRank))
+  const dAfter   = Math.max(0, aAfter - (def.defense ?? 3) * 5)
+  const baseDmg  = Math.max(0, dAfter - Math.min(3, Math.max(0, defRank)) * 3)
+  const crit     = Math.random() * 100 < Math.min(100, (atk.attack ?? 3) * 2)
   return { damage: crit ? Math.floor(baseDmg * 1.5) : baseDmg, multiplier, critical: crit }
 }
 
@@ -115,7 +113,7 @@ function applyRankChanges(r, self, target) {
   const msgs = []
   const sR = { ...defaultRanks(), ...(self.ranks   ?? {}) }
   const tR = { ...defaultRanks(), ...(target.ranks ?? {}) }
-  const cap = { atk: 4, def: 3, spd: 5 }
+  const cap   = { atk: 4, def: 3, spd: 5 }
   const label = { atk: "공격", def: "방어", spd: "스피드" }
 
   const apply = (obj, key, who, name) => {
@@ -143,7 +141,7 @@ function applyRankChanges(r, self, target) {
 }
 
 // ────────────────────────────────────────────────
-// 로그 시스템 (싱글과 동일 구조)
+// 로그 시스템
 // ────────────────────────────────────────────────
 let typingQueue = [], isTyping = false
 
@@ -205,13 +203,13 @@ function updateHpBar(slot, pkmn) {
   }
 }
 
-function updateTagDisplay(slot, pkmn, data) {
+function updateTagDisplay(slot, pkmn) {
   const el = document.getElementById(`${slot}-tag`)
   if (!el || !pkmn) return
   const tags = []
-  if (pkmn.assistBoost)   tags.push("⚡어시스트")
-  if (pkmn.syncActive)    tags.push("🔗싱크로")
-  if (pkmn.isAssisting)   tags.push("↗어시중")
+  if (pkmn.assistBoost) tags.push("⚡어시스트")
+  if (pkmn.syncActive)  tags.push("🔗싱크로")
+  if (pkmn.isAssisting) tags.push("↗어시중")
   el.innerText = tags.join(" ")
 }
 
@@ -219,7 +217,7 @@ function updateAllUI(data) {
   for (const s of SLOTS) {
     const pkmn = data[`${s}_entry`]?.[0]
     updateHpBar(s, pkmn)
-    updateTagDisplay(s, pkmn, data)
+    updateTagDisplay(s, pkmn)
     const nameEl = document.getElementById(`${s}-player-name`)
     if (nameEl) nameEl.innerText = data[`${s}_name`] ?? s.toUpperCase()
   }
@@ -243,11 +241,11 @@ function updateTurnOrderUI(data) {
 // ────────────────────────────────────────────────
 function renderActionPanel(data) {
   if (isSpec || !mySlot) { hidePanel(); return }
-  const idx    = data.turn_order_idx ?? 0
-  const curSlot = data.turn_order?.[idx]
+  const idx      = data.turn_order_idx ?? 0
+  const curSlot  = data.turn_order?.[idx]
   const isMyTurn = curSlot === mySlot && !data.game_over
-  const myPkmn  = data[`${mySlot}_entry`]?.[0]
-  const fainted = !myPkmn || myPkmn.hp <= 0
+  const myPkmn   = data[`${mySlot}_entry`]?.[0]
+  const fainted  = !myPkmn || myPkmn.hp <= 0
 
   const panel = document.getElementById("action-panel")
   if (!panel) return
@@ -263,35 +261,34 @@ function renderActionPanel(data) {
     const mv = movesArr[i]
     if (!mv) { btn.textContent = "-"; btn.disabled = true; btn.onclick = null; continue }
     btn.textContent = `${mv.name} (PP:${mv.pp})`
-    btn.disabled = mv.pp <= 0
-    btn.onclick = mv.pp > 0 ? () => showTargetSelect(i, data) : null
+    btn.disabled    = mv.pp <= 0
+    btn.onclick     = mv.pp > 0 ? () => showTargetSelect(i, data) : null
   }
 
   // 팀 액션 버튼
-  const teamKey   = TEAM_A.includes(mySlot) ? "teamA" : "teamB"
-  const ally      = allyOf(mySlot)
-  const allyPkmn  = data[`${ally}_entry`]?.[0]
+  const teamKey  = TEAM_A.includes(mySlot) ? "teamA" : "teamB"
+  const ally     = allyOf(mySlot)
+  const allyPkmn = data[`${ally}_entry`]?.[0]
   const allyAlive = allyPkmn && allyPkmn.hp > 0
 
   const assistBtn = document.getElementById("assist-btn")
   const syncBtn   = document.getElementById("sync-btn")
 
   if (assistBtn) {
-    const used = data[`${teamKey}_assist_used`]
-    const pendingReq = data[`assist_request_${mySlot}`]  // 내가 요청 중
-    assistBtn.disabled = !allyAlive || used || !!pendingReq || !!myPkmn.assistBoost
+    const used       = data[`${teamKey}_assist_used`]
+    const pendingReq = data[`assist_request_${mySlot}`]
+    assistBtn.disabled    = !allyAlive || used || !!pendingReq || !!myPkmn.assistBoost
     assistBtn.textContent = used ? "어시스트(사용됨)" : "어시스트 요청"
-    assistBtn.onclick = () => requestTeamAction("assist", data)
+    assistBtn.onclick     = () => requestTeamAction("assist", data)
   }
   if (syncBtn) {
-    const used = data[`${teamKey}_sync_used`]
+    const used       = data[`${teamKey}_sync_used`]
     const pendingReq = data[`sync_request_${mySlot}`]
-    syncBtn.disabled = !allyAlive || used || !!pendingReq || !!myPkmn.syncActive
+    syncBtn.disabled    = !allyAlive || used || !!pendingReq || !!myPkmn.syncActive
     syncBtn.textContent = used ? "싱크로나이즈(사용됨)" : "싱크로나이즈 요청"
-    syncBtn.onclick = () => requestTeamAction("sync", data)
+    syncBtn.onclick     = () => requestTeamAction("sync", data)
   }
 
-  // 아군 요청 수신 표시
   renderPendingRequests(data)
 }
 
@@ -321,7 +318,7 @@ function showTargetSelect(moveIdx, data) {
   if (!anyTarget) { modal.innerHTML = ""; return }
 
   const cancel = document.createElement("button")
-  cancel.textContent = "취소"
+  cancel.textContent  = "취소"
   cancel.style.background = "#555"
   cancel.onclick = () => { modal.innerHTML = "" }
   modal.appendChild(cancel)
@@ -331,8 +328,8 @@ function showTargetSelect(moveIdx, data) {
 // 팀 액션: 어시스트 / 싱크로나이즈
 // ────────────────────────────────────────────────
 async function requestTeamAction(type, data) {
-  const ally    = allyOf(mySlot)
-  const myPkmn  = data[`${mySlot}_entry`]?.[0]
+  const ally     = allyOf(mySlot)
+  const myPkmn   = data[`${mySlot}_entry`]?.[0]
   const allyPkmn = data[`${ally}_entry`]?.[0]
   if (!allyPkmn || allyPkmn.hp <= 0) return
 
@@ -348,11 +345,10 @@ function renderPendingRequests(data) {
   const ally = allyOf(mySlot)
   if (!ally) return
 
-  // 아군이 나에게 보낸 어시스트 요청
   const ar = data[`assist_request_${ally}`]
   if (ar && ar.to === mySlot) {
     const div = document.createElement("div")
-    div.innerHTML = `<span>⚡ 아군이 어시스트 요청!</span> `
+    div.innerHTML = `<span>어시스트 요청!</span> `
     const btn = document.createElement("button")
     btn.textContent = "수락"
     btn.onclick = () => acceptAssist(data, ar)
@@ -360,11 +356,10 @@ function renderPendingRequests(data) {
     container.appendChild(div)
   }
 
-  // 아군이 나에게 보낸 싱크로 요청
   const sr = data[`sync_request_${ally}`]
   if (sr && sr.to === mySlot) {
     const div = document.createElement("div")
-    div.innerHTML = `<span>🔗 아군이 싱크로나이즈 요청!</span> `
+    div.innerHTML = `<span> 싱크로나이즈 요청!</span> `
     const btn = document.createElement("button")
     btn.textContent = "수락"
     btn.onclick = () => acceptSync(data, sr)
@@ -373,20 +368,18 @@ function renderPendingRequests(data) {
   }
 }
 
-// 어시스트 수락: 요청자(from) 포켓몬에 assistBoost 플래그 세팅
 async function acceptAssist(data, req) {
   const teamKey   = TEAM_A.includes(mySlot) ? "teamA" : "teamB"
   const fromEntry = (data[`${req.from}_entry`] ?? []).map(p => ({ ...p }))
-  fromEntry[0].assistBoost = true   // 다음 공격 2배
+  fromEntry[0].assistBoost = true
   await updateDoc(roomRef, {
-    [`${req.from}_entry`]: fromEntry,
+    [`${req.from}_entry`]:      fromEntry,
     [`${teamKey}_assist_used`]: true,
     [`assist_request_${req.from}`]: null
   })
   await addLog(`어시스트 수락! ${fromEntry[0].name}의 다음 공격 위력이 오른다!`)
 }
 
-// 싱크로나이즈 수락: 양측 entry에 syncActive / syncPartner 세팅
 async function acceptSync(data, req) {
   const teamKey   = TEAM_A.includes(mySlot) ? "teamA" : "teamB"
   const fromEntry = (data[`${req.from}_entry`] ?? []).map(p => ({ ...p }))
@@ -396,8 +389,8 @@ async function acceptSync(data, req) {
   toEntry[0].syncActive    = true
   toEntry[0].syncPartner   = req.from
   await updateDoc(roomRef, {
-    [`${req.from}_entry`]: fromEntry,
-    [`${mySlot}_entry`]:   toEntry,
+    [`${req.from}_entry`]:    fromEntry,
+    [`${mySlot}_entry`]:      toEntry,
     [`${teamKey}_sync_used`]: true,
     [`sync_request_${req.from}`]: null
   })
@@ -414,7 +407,14 @@ async function initGame(data) {
   const gameId = `dgame_${Date.now()}`
   gameRef = doc(db, "double", ROOM_ID, "games", gameId)
   await updateDoc(roomRef, { game_id: gameId })
-  await setDoc(gameRef, { logs: [], createdAt: Date.now() })
+  await setDoc(gameRef, {
+    logs: [],
+    createdAt: Date.now(),
+    p1: data.p1_name ?? null,
+    p2: data.p2_name ?? null,
+    p3: data.p3_name ?? null,
+    p4: data.p4_name ?? null
+  })
   listenLogs()
 
   // 4슬롯 주사위
@@ -443,7 +443,6 @@ async function initGame(data) {
     await addLog(`${data[`${s}_name`]}의 ${pkmn?.name ?? "???"}이(가) 등장!`)
   }
   await wait(300)
-  // 주사위 결과 로그
   const diceLog = SLOTS.map(s => `${data[`${s}_name`]}: ${dice[`${s}_dice`]}`).join(", ")
   await addLog(`주사위: ${diceLog}`)
   await addLog(`선공 순서: ${order.map(s => data[`${s}_name`]).join(" → ")}`)
@@ -457,22 +456,18 @@ function listenRoom() {
     const data = snap.data()
     if (!data) return
 
-    // p2/p3/p4/관전자: game_id 생기면 gameRef 초기화
     if (data.game_id && !gameRef) {
       gameRef = doc(db, "double", ROOM_ID, "games", data.game_id)
       listenLogs()
     }
 
-    // game_over
     if (data.game_over) { showGameOver(data); return }
 
-    // 게임 초기화 (p1 담당, turn_order 없을 때)
     if (data.game_started && !data.turn_order && mySlot === "p1" && !gameStarted) {
       await initGame(data)
       return
     }
 
-    // actionDone 리셋: 내 턴이 아닐 때
     const curSlot = data.turn_order?.[data.turn_order_idx ?? 0]
     if (curSlot !== mySlot) actionDone = false
 
@@ -492,7 +487,6 @@ async function useMove(moveIdx, targetSlot) {
   const snap = await getDoc(roomRef)
   const data = snap.data()
 
-  // 딥 카피
   const E = {}
   for (const s of SLOTS) {
     E[s] = (data[`${s}_entry`] ?? []).map(p => ({
@@ -512,7 +506,6 @@ async function useMove(moveIdx, targetSlot) {
   const myName     = data[`${mySlot}_name`]
   const targetName = data[`${targetSlot}_name`]
 
-  // 선행 상태이상 체크
   const pre = checkPreActionStatus(atk)
   for (const msg of pre.msgs) { await addLog(msg); await wait(300) }
   if (pre.blocked) { await advanceTurn(data, E); return }
@@ -520,20 +513,17 @@ async function useMove(moveIdx, targetSlot) {
   const conf = checkConfusion(atk)
   for (const msg of conf.msgs) { await addLog(msg); await wait(300) }
   if (conf.selfHit) {
-    await addLog(conf.msgs[conf.msgs.length - 1] ?? "")
     await advanceTurn(data, E); return
   }
 
-  // PP 소비
   atk.moves[moveIdx] = { ...moveData, pp: moveData.pp - 1 }
   const moveInfo = moves[moveData.name]
 
   await addLog(`${atk.name}의 ${moveData.name}! → ${targetName}의 ${def.name}을(를) 노린다!`)
   await wait(300)
 
-  // ── 변화기 처리
+  // 변화기 처리
   if (!moveInfo?.power) {
-    // 상대 타겟 랭크다운 포함 여부 체크
     const targetsEnemy = moveInfo?.rank &&
       (moveInfo.rank.targetAtk !== undefined ||
        moveInfo.rank.targetDef !== undefined ||
@@ -554,7 +544,6 @@ async function useMove(moveIdx, targetSlot) {
     rMsgs.push(...tickRanks(atk))
     for (const msg of rMsgs) { await addLog(msg); await wait(280) }
 
-    // 날씨 변화기
     if (moveInfo?.effect?.weather) {
       const wr = applyWeatherEffect(moveInfo.effect)
       for (const msg of wr.msgs) { await addLog(msg); await wait(280) }
@@ -563,9 +552,9 @@ async function useMove(moveIdx, targetSlot) {
     await advanceTurn(data, E); return
   }
 
-  // ── 공격기 처리
-  const atkRank = getActiveRank(atk, "atk")
-  const defRank = getActiveRank(def, "def")
+  // 공격기 처리
+  const atkRank     = getActiveRank(atk, "atk")
+  const defRank     = getActiveRank(def, "def")
   const expiredMsgs = tickRanks(atk)
 
   const { hit, hitType } = calcHit(atk, moveInfo, def)
@@ -581,14 +570,12 @@ async function useMove(moveIdx, targetSlot) {
     await advanceTurn(data, E); return
   }
 
-  // 어시스트 보정 (공격자에 assistBoost 플래그 있으면 × 2)
   if (atk.assistBoost) {
     damage = Math.floor(damage * 2)
     atk.assistBoost = false
     await addLog(`어시스트 효과로 위력이 크게 올라갔다! (×2)`)
   }
 
-  // 싱크로나이즈: 방어 포켓몬에 syncActive 있으면 파트너와 피해 분산
   const partner     = def.syncActive ? def.syncPartner : null
   const partnerPkmn = partner ? E[partner]?.[0] : null
 
@@ -613,7 +600,6 @@ async function useMove(moveIdx, targetSlot) {
     if (def.hp <= 0) await addLog(`${def.name}은(는) 쓰러졌다!`)
   }
 
-  // 날씨
   const wr = applyWeatherEffect(moveInfo?.effect)
   if (wr.weather) for (const msg of wr.msgs) { await addLog(msg); await wait(280) }
 
@@ -630,17 +616,14 @@ async function advanceTurn(data, E, weather = null) {
   const curCount = data.turn_count ?? 1
   let   idx      = (data.turn_order_idx ?? 0) + 1
 
-  // 기절 슬롯 건너뜀
   while (idx < order.length && (E[order[idx]]?.[0]?.hp ?? 0) <= 0) idx++
 
   const isRoundEnd = idx >= order.length
 
-  // Firestore에 올릴 entry 업데이트 맵
   const entryUpdate = {}
   for (const s of SLOTS) entryUpdate[`${s}_entry`] = E[s]
   if (weather) entryUpdate.weather = weather
 
-  // 패배 판정
   const aFainted = teamFainted(E, TEAM_A)
   const bFainted = teamFainted(E, TEAM_B)
 
@@ -654,12 +637,9 @@ async function advanceTurn(data, E, weather = null) {
   }
 
   if (isRoundEnd) {
-    // ── 라운드 끝: EOT 독/화상 처리
-    const { msgs, anyFainted: eotFainted } =
-      applyEndOfTurnDamage(SLOTS.map(s => E[s]))
+    const { msgs } = applyEndOfTurnDamage(SLOTS.map(s => E[s]))
     for (const msg of msgs) { await addLog(msg); await wait(250) }
 
-    // EOT 후 재판정
     const aF = teamFainted(E, TEAM_A)
     const bF = teamFainted(E, TEAM_B)
     if (aF || bF) {
@@ -673,7 +653,6 @@ async function advanceTurn(data, E, weather = null) {
       return
     }
 
-    // 새 라운드: 생존 슬롯으로 재정렬 (속도 기준)
     const newOrder = [...order].filter(s => (E[s]?.[0]?.hp ?? 0) > 0)
     const eu2 = {}
     for (const s of SLOTS) eu2[`${s}_entry`] = E[s]
@@ -712,6 +691,5 @@ onAuthStateChanged(auth, async user => {
   for (const s of SLOTS) {
     if (room[`${s}_uid`] === myUid) { mySlot = s; break }
   }
-  if (!mySlot && isSpec) mySlot = null
   listenRoom()
 })
