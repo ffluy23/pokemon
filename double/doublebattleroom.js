@@ -3,7 +3,7 @@
 // 슬롯: p1, p2 (팀A) / p3, p4 (팀B)
 // game_started → window.BATTLE_URL 로 전원 이동
 
-import { auth, db } from "./firebase.js"
+import { auth, db } from "../js/firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
 import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 
