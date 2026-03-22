@@ -7,7 +7,7 @@ import { auth, db } from "../js/firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
 import { doc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 
-const SLOTS = ["p1", "p2", "p3", "p4"]
+const SLOTS      = ["p1", "p2", "p3", "p4"]
 const ROOM_ID    = window.ROOM_ID
 const BATTLE_URL = window.BATTLE_URL
 
@@ -37,7 +37,7 @@ onAuthStateChanged(auth, async user => {
 async function joinRoom() {
   const snap = await getDoc(roomRef)
   const room = snap.data() ?? {}
-  if (calcMySlot(room)) return           // 이미 자리 있음
+  if (calcMySlot(room)) return
   if (room.game_started) { await joinAsSpectator(room); return }
   for (const s of SLOTS) {
     if (!room[`${s}_uid`]) {
@@ -51,7 +51,7 @@ async function joinRoom() {
 async function joinAsSpectator(room) {
   if ((room.spectators ?? []).includes(myUid)) return
   await updateDoc(roomRef, {
-    spectators: [...(room.spectators ?? []), myUid],
+    spectators:      [...(room.spectators      ?? []), myUid],
     spectator_names: [...(room.spectator_names ?? []), myNickname]
   })
 }
@@ -59,7 +59,7 @@ async function joinAsSpectator(room) {
 // ── 실시간 리스너
 function listenRoom() {
   onSnapshot(roomRef, async snap => {
-    const room = snap.data() ?? {}
+    const room   = snap.data() ?? {}
     const mySlot = calcMySlot(room)
 
     // 슬롯 표시
@@ -68,11 +68,11 @@ function listenRoom() {
       if (!el) continue
       const name  = room[`${s}_name`]
       const ready = room[`${s}_ready`]
-      el.innerText = name ? `${name}${ready ? " ✓" : ""}` : "대기..."
-      el.className = `slot${ready ? " ready" : ""}`
+      el.innerText  = name ? `${name}${ready ? " ✓" : ""}` : "대기..."
+      el.className  = `slot${ready ? " ready" : ""}`
     }
 
-    // 관전자
+    // 관전자 목록
     const specEl = document.getElementById("spectator-list")
     if (specEl) {
       const names = room.spectator_names ?? []
@@ -81,29 +81,25 @@ function listenRoom() {
 
     // 버튼 표시
     const isPlayer = SLOTS.includes(mySlot)
-    document.getElementById("readyBtn").style.display = isPlayer ? "inline-block" : "none"
+    document.getElementById("readyBtn").style.display = isPlayer         ? "inline-block" : "none"
     document.getElementById("swapBtn").style.display  = mySlot === "spectator" ? "inline-block" : "none"
 
     renderSwapRequest(room, mySlot)
 
-    // 4명 모두 준비 → entry 복사
+    // 4명 모두 준비 → entry 복사 후 game_started
     const allReady = SLOTS.every(s => room[`${s}_uid`] && room[`${s}_ready`])
     if (allReady && !room.game_started && isPlayer) {
       const userSnap = await getDoc(doc(db, "users", myUid))
       const rawEntry = userSnap.data()?.entry ?? []
-      const entry = rawEntry.map(p => ({ ...p, maxHp: p.hp }))
+      const entry    = rawEntry.map(p => ({ ...p, maxHp: p.hp }))
       await updateDoc(roomRef, { [`${mySlot}_entry`]: entry })
-      // p1이 game_started 트리거
       if (mySlot === "p1") await updateDoc(roomRef, { game_started: true })
     }
 
     // game_started → 배틀 화면으로 이동
     if (room.game_started && mySlot && !redirecting) {
       redirecting = true
-      const url = mySlot === "spectator"
-        ? BATTLE_URL + "?spectator=true"
-        : BATTLE_URL
-      location.href = url
+      location.href = mySlot === "spectator" ? BATTLE_URL + "?spectator=true" : BATTLE_URL
     }
   })
 }
@@ -116,7 +112,8 @@ function renderSwapRequest(room, mySlot) {
   if (!req) { el.innerHTML = ""; return }
 
   if (req.toSlot === mySlot && req.from !== myUid) {
-    el.innerHTML = `<p>${req.fromName}님이 <b>${req.toSlot.toUpperCase()}</b> 자리 교체를 요청했습니다.</p>
+    el.innerHTML = `
+      <p>${req.fromName}님이 <b>${req.toSlot.toUpperCase()}</b> 자리 교체를 요청했습니다.</p>
       <button onclick="window._acceptSwap()">수락</button>
       <button onclick="window._rejectSwap()">거절</button>`
   } else if (req.from === myUid) {
@@ -127,17 +124,17 @@ function renderSwapRequest(room, mySlot) {
 }
 
 window._acceptSwap = async function () {
-  const snap = await getDoc(roomRef)
-  const room = snap.data() ?? {}
-  const req  = room.swap_request
+  const snap      = await getDoc(roomRef)
+  const room      = snap.data() ?? {}
+  const req       = room.swap_request
   if (!req) return
-  const mySlot = calcMySlot(room)
-  const specs  = room.spectators ?? [], specNames = room.spectator_names ?? []
+  const specs     = room.spectators      ?? []
+  const specNames = room.spectator_names ?? []
   await updateDoc(roomRef, {
-    [`${req.toSlot}_uid`]:  req.from,
-    [`${req.toSlot}_name`]: req.fromName,
+    [`${req.toSlot}_uid`]:  req.from     ?? null,
+    [`${req.toSlot}_name`]: req.fromName ?? null,
     spectators:      [...specs.filter(u => u !== req.from), myUid],
-    spectator_names: [...specNames.filter(n => n !== req.fromName), myNickname],
+    spectator_names: [...specNames.filter(n => n !== req.fromName), myNickname ?? null],
     swap_request: null
   })
 }
@@ -150,7 +147,7 @@ window._rejectSwap = async function () {
 function setupButtons() {
   // 준비 완료
   document.getElementById("readyBtn").onclick = async () => {
-    const snap = await getDoc(roomRef)
+    const snap   = await getDoc(roomRef)
     const mySlot = calcMySlot(snap.data())
     if (!SLOTS.includes(mySlot)) return
     await updateDoc(roomRef, { [`${mySlot}_ready`]: true })
@@ -159,8 +156,8 @@ function setupButtons() {
 
   // 나가기
   document.getElementById("leaveBtn").onclick = async () => {
-    const snap = await getDoc(roomRef)
-    const room = snap.data() ?? {}
+    const snap   = await getDoc(roomRef)
+    const room   = snap.data() ?? {}
     const mySlot = calcMySlot(room)
     if (SLOTS.includes(mySlot) && room.game_started) { alert("도망칠 수 없다!"); return }
     await leaveRoom(mySlot, room)
@@ -171,43 +168,48 @@ function setupButtons() {
   document.getElementById("swapBtn").onclick = async () => {
     const snap = await getDoc(roomRef)
     const room = snap.data() ?? {}
-    // 빈 슬롯 있으면 바로 승격
     for (const s of SLOTS) {
       if (!room[`${s}_uid`]) { await promoteToSlot(s, room); return }
     }
-    // 빈 슬롯 없으면 교체 대상 선택
     const target = prompt("교체 요청할 슬롯 입력 (p1 / p2 / p3 / p4):")?.toLowerCase()
     if (SLOTS.includes(target)) {
-      await updateDoc(roomRef, { swap_request: { from: myUid, fromName: myNickname, toSlot: target } })
+      await updateDoc(roomRef, {
+        swap_request: { from: myUid, fromName: myNickname ?? null, toSlot: target }
+      })
     }
   }
 }
 
 async function promoteToSlot(slot, room) {
-  const specs = room.spectators ?? [], specNames = room.spectator_names ?? []
+  const specs     = room.spectators      ?? []
+  const specNames = room.spectator_names ?? []
   await updateDoc(roomRef, {
-    [`${slot}_uid`]:  myUid,
-    [`${slot}_name`]: myNickname,
+    [`${slot}_uid`]:  myUid      ?? null,
+    [`${slot}_name`]: myNickname ?? null,
     spectators:      specs.filter(u => u !== myUid),
     spectator_names: specNames.filter(n => n !== myNickname)
   })
 }
 
 async function leaveRoom(mySlot, room) {
-  const specs = room.spectators ?? [], specNames = room.spectator_names ?? []
+  const specs     = room.spectators      ?? []
+  const specNames = room.spectator_names ?? []
+
   if (SLOTS.includes(mySlot)) {
     if (specs.length > 0) {
       const i = Math.floor(Math.random() * specs.length)
       await updateDoc(roomRef, {
-        [`${mySlot}_uid`]:   specs[i],
-        [`${mySlot}_name`]:  specNames[i],
+        [`${mySlot}_uid`]:   specs[i]     ?? null,
+        [`${mySlot}_name`]:  specNames[i] ?? null,
         [`${mySlot}_ready`]: false,
         spectators:      specs.filter((_, j) => j !== i),
         spectator_names: specNames.filter((_, j) => j !== i)
       })
     } else {
       await updateDoc(roomRef, {
-        [`${mySlot}_uid`]: null, [`${mySlot}_name`]: null, [`${mySlot}_ready`]: false
+        [`${mySlot}_uid`]:   null,
+        [`${mySlot}_name`]:  null,
+        [`${mySlot}_ready`]: false
       })
     }
   } else {
