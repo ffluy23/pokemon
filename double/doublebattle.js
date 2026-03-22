@@ -9,13 +9,14 @@
 //   어시스트  - 아군의 다음 공격 위력 2배
 //   싱크로나이즈 - 공격받을 때 피해 1/2씩 분산 (양측 동의 필요)
 
-import { auth, db } from "./firebase.js"
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+import { auth, db } from "../js/firebase.js"
+import { moves } from "../js/moves.js"
+import { getTypeMultiplier } from "../js/typeChart.js"
 import {
-  doc, getDoc, updateDoc, onSnapshot, arrayUnion, setDoc
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
-import { moves } from "./moves.js"
-import { getTypeMultiplier } from "./typeChart.js"
+  statusName, josa,
+  applyMoveEffect, checkPreActionStatus, checkConfusion,
+  applyEndOfTurnDamage, applyWeatherEffect, getStatusSpdPenalty
+} from "../js/effecthandler.js"
 import {
   statusName, josa,
   applyMoveEffect, checkPreActionStatus, checkConfusion,
