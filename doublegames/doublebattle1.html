@@ -2,6 +2,15 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+  <style>
+  #field { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .hp-bar-wrap { background: #ccc; height: 8px; }
+  .hp-bar { height: 100%; background: green; width: 100%; }
+  #action-panel { display: none; margin-bottom: 8px; }
+  .move-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
+  #target-modal:not(:empty) { border: 1px solid #000; padding: 6px; margin-bottom: 6px; }
+  #leave-btn { display: none; }
+</style>
 <title>더블배틀 #1</title>
 </head>
 <body>
