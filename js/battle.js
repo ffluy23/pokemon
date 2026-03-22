@@ -418,7 +418,7 @@ function showGameOver(data) {
   const bench = document.getElementById("bench-container"); if (bench) bench.innerHTML = ""
   if (!isSpectator) {
     const lb = document.getElementById("leaveBtn")
-    if (lb) { lb.style.display = "inline-block"; lb.disabled = false; lb.innerText = "방 나가기"; lb.onclick = leaveGame }
+    if (lb) { lb.style.display = "inline-block"; lb.disabled = false; lb.innerText = "Leave"; lb.onclick = leaveGame }
   }
 }
 
@@ -584,7 +584,7 @@ async function useMove(moveIdx, data) {
     else { await addLog(`그러나 ${myPokemon.name}의 공격은 빗나갔다!`) }
   } else {
     const { damage, multiplier, stab, dice, critical } = calcDamage(myPokemon, moveData.name, enePokemon, atkRank, defRankEne)
-    if (multiplier === 0) { await addLog(`${enePokemon.name}에게는 효과가 없다…`) }
+    if (multiplier === 0) { await addLog(`${enePokemon.name}에게는 효과가 없는 듯하다…`) }
     else {
       await updateDoc(roomRef, { hit_event: { defender: enemySlot, ts: Date.now() } })
       await triggerBlink("enemy")
