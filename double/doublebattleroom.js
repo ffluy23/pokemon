@@ -14,6 +14,7 @@ const BATTLE_URL = window.BATTLE_URL
 const roomRef = doc(db, "double", ROOM_ID)
 let myUid = null, myNickname = null
 let redirecting = false
+let entryUploaded = false  // 내 entry 중복 업로드 방지
 
 // ── 내 슬롯 계산
 function calcMySlot(room) {
@@ -81,19 +82,29 @@ function listenRoom() {
 
     // 버튼 표시
     const isPlayer = SLOTS.includes(mySlot)
-    document.getElementById("readyBtn").style.display = isPlayer         ? "inline-block" : "none"
+    document.getElementById("readyBtn").style.display = isPlayer               ? "inline-block" : "none"
     document.getElementById("swapBtn").style.display  = mySlot === "spectator" ? "inline-block" : "none"
 
     renderSwapRequest(room, mySlot)
 
-    // 4명 모두 준비 → entry 복사 후 game_started
+    // 4명 모두 준비 → 내 entry 업로드 (1회만)
     const allReady = SLOTS.every(s => room[`${s}_uid`] && room[`${s}_ready`])
-    if (allReady && !room.game_started && isPlayer) {
+    if (allReady && !room.game_started && isPlayer && !entryUploaded) {
+      entryUploaded = true
       const userSnap = await getDoc(doc(db, "users", myUid))
       const rawEntry = userSnap.data()?.entry ?? []
       const entry    = rawEntry.map(p => ({ ...p, maxHp: p.hp }))
       await updateDoc(roomRef, { [`${mySlot}_entry`]: entry })
-      if (mySlot === "p1") await updateDoc(roomRef, { game_started: true })
+    }
+
+    // p1만: 4명 entry 모두 올라왔는지 확인 후 game_started 트리거
+    if (allReady && !room.game_started && mySlot === "p1") {
+      const freshSnap = await getDoc(roomRef)
+      const freshRoom = freshSnap.data() ?? {}
+      const allEntryReady = SLOTS.every(s => (freshRoom[`${s}_entry`] ?? []).length > 0)
+      if (allEntryReady) {
+        await updateDoc(roomRef, { game_started: true })
+      }
     }
 
     // game_started → 배틀 화면으로 이동
