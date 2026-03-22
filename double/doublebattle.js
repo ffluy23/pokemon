@@ -456,6 +456,10 @@ function listenRoom() {
     const data = snap.data()
     if (!data) return
 
+     // 임시 디버그
+    console.log("p3_entry:", data.p3_entry)
+    console.log("p4_entry:", data.p4_entry)
+
     if (data.game_id && !gameRef) {
       gameRef = doc(db, "double", ROOM_ID, "games", data.game_id)
       listenLogs()
