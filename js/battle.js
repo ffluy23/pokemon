@@ -1,4 +1,4 @@
-// battle.js
+// js/battle.js
 
 import { auth, db } from "./firebase.js"
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
@@ -15,58 +15,58 @@ import {
 } from "./effecthandler.js"
 import { fadeBgmOut } from "./intro.js"
 
-const roomRef = doc(db, "rooms", ROOM_ID)
+const roomRef = doc(db, "rooms", ROOM_ID);
 
 // ── 로그: games/{gameId} 문서의 logs 배열에 저장 (게임당 문서 1개)
-let gameId    = null
-let gameRef   = null
-let logSeq    = 0   // 렌더된 로그 수 추적 (중복 방지)
+let gameId    = null;
+let gameRef   = null;
+let logSeq    = 0;   // 렌더된 로그 수 추적 (중복 방지)
 
 const SFX_DICE = "https://slippery-copper-mzpmcmc2ra.edgeone.app/soundreality-bicycle-bell-155622.mp3"
 const SFX_BTN  = "https://usual-salmon-mnqxptwyvw.edgeone.app/Pokemon%20(A%20Button)%20-%20Sound%20Effect%20(HD)%20(1)%20(1).mp3"
 
-const sfxCache = {}
+const sfxCache = {};
 function preloadSound(url) {
-  if (!sfxCache[url]) { const a = new Audio(url); a.load(); sfxCache[url] = true }
+  if (!sfxCache[url]) { const a = new Audio(url); a.load(); sfxCache[url] = true; }
 }
 function playSound(url) {
-  const a = new Audio(url); a.volume = 0.6; a.play().catch(() => {})
+  const a = new Audio(url); a.volume = 0.6; a.play().catch(() => {});
 }
 
 function popDiceNum(el) {
-  if (!el) return
-  el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop")
-  el.addEventListener("animationend", () => el.classList.remove("pop"), { once: true })
+  if (!el) return;
+  el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop");
+  el.addEventListener("animationend", () => el.classList.remove("pop"), { once: true });
 }
 
 function showBattlePopup(prefix, type) {
   const wrap = document.querySelector(`#${prefix}-pokemon-area .portrait-wrap`)
-    ?? document.getElementById(`${prefix}-pokemon-area`)
-  if (!wrap) return
-  const el = document.createElement("div")
-  el.className = `battle-popup ${type}`
-  el.innerText = type === "critical" ? "급소!" : "회피!"
-  wrap.style.position = "relative"; wrap.appendChild(el)
-  void el.offsetWidth; el.classList.add("show")
-  el.addEventListener("animationend", () => el.remove(), { once: true })
+    ?? document.getElementById(`${prefix}-pokemon-area`);
+  if (!wrap) return;
+  const el = document.createElement("div");
+  el.className = `battle-popup ${type}`;
+  el.innerText = type === "critical" ? "급소!" : "회피!";
+  wrap.style.position = "relative"; wrap.appendChild(el);
+  void el.offsetWidth; el.classList.add("show");
+  el.addEventListener("animationend", () => el.remove(), { once: true });
 }
 
-let mySlot   = null, myUid  = null, myTurn = false
-let gameStarted = false, diceShown = false, actionDone = false, gameOver = false
-let battleIntroSequenceStarted = false
-let lastHitEventTs = 0, lastDiceEventTs = 0
+let mySlot   = null, myUid  = null, myTurn = false;
+let gameStarted = false, diceShown = false, actionDone = false, gameOver = false;
+let battleIntroSequenceStarted = false;
+let lastHitEventTs = 0, lastDiceEventTs = 0;
 
-const isSpectator = new URLSearchParams(location.search).get("spectator") === "true"
+const isSpectator = new URLSearchParams(location.search).get("spectator") === "true";
 
-function wait(ms) { return new Promise(r => setTimeout(r, ms)) }
-function josa(w, t) { return josaEH(w, t) }
-function rollD10() { return Math.floor(Math.random() * 10) + 1 }
-function isAllFainted(entry) { return entry.every(p => p.hp <= 0) }
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+function josa(w, t) { return josaEH(w, t); }
+function rollD10() { return Math.floor(Math.random() * 10) + 1; }
+function isAllFainted(entry) { return entry.every(p => p.hp <= 0); }
 
-function defaultRanks() { return { atk: 0, atkTurns: 0, def: 0, defTurns: 0, spd: 0, spdTurns: 0 } }
+function defaultRanks() { return { atk: 0, atkTurns: 0, def: 0, defTurns: 0, spd: 0, spdTurns: 0 }; }
 function getActiveRank(pokemon, key) {
-  const r = pokemon.ranks ?? {}
-  return (r[`${key}Turns`] ?? 0) > 0 ? (r[key] ?? 0) : 0
+  const r = pokemon.ranks ?? {};
+  return (r[`${key}Turns`] ?? 0) > 0 ? (r[key] ?? 0) : 0;
 }
 function tickMyRanks(pokemon) {
   if (!pokemon.ranks) return []
@@ -141,82 +141,82 @@ function calcDamage(attacker, moveName, defender, atkRank = 0, defRank = 0) {
 }
 
 function updateHpBar(barId, textId, hp, maxHp, showNumbers) {
-  const bar = document.getElementById(barId), txt = textId ? document.getElementById(textId) : null
-  if (!bar) return
-  const pct = maxHp > 0 ? Math.max(0, Math.min(100, (hp / maxHp) * 100)) : 0
-  bar.style.width = pct + "%"
-  bar.style.backgroundColor = pct > 50 ? "#4caf50" : pct > 20 ? "#ff9800" : "#f44336"
-  if (txt) txt.innerText = showNumbers ? `HP: ${hp} / ${maxHp}` : ""
+  const bar = document.getElementById(barId), txt = textId ? document.getElementById(textId) : null;
+  if (!bar) return;
+  const pct = maxHp > 0 ? Math.max(0, Math.min(100, (hp / maxHp) * 100)) : 0;
+  bar.style.width = pct + "%";
+  bar.style.backgroundColor = pct > 50 ? "#4caf50" : pct > 20 ? "#ff9800" : "#f44336";
+  if (txt) txt.innerText = showNumbers ? `HP: ${hp} / ${maxHp}` : "";
 }
 
 function updatePortrait(prefix, pokemon, animate = false) {
-  const img = document.getElementById(`${prefix}-portrait`)
-  const placeholder = document.getElementById(`${prefix}-portrait-placeholder`)
-  if (!img) return
+  const img = document.getElementById(`${prefix}-portrait`);
+  const placeholder = document.getElementById(`${prefix}-portrait-placeholder`);
+  if (!img) return;
   if (!pokemon?.portrait) {
-    img.classList.remove("visible"); img.style.display = "none"
-    if (placeholder) placeholder.style.display = "block"; return
+    img.classList.remove("visible"); img.style.display = "none";
+    if (placeholder) placeholder.style.display = "block"; return;
   }
-  if (placeholder) placeholder.style.display = "none"
-  img.classList.remove("visible", "slide-in-my", "slide-in-enemy")
-  img.style.display = "block"; img.src = pokemon.portrait; img.alt = pokemon.name
+  if (placeholder) placeholder.style.display = "none";
+  img.classList.remove("visible", "slide-in-my", "slide-in-enemy");
+  img.style.display = "block"; img.src = pokemon.portrait; img.alt = pokemon.name;
   setTimeout(() => {
-    img.classList.add("visible", ...(animate ? [prefix === "my" ? "slide-in-my" : "slide-in-enemy"] : []))
-  }, 80)
+    img.classList.add("visible", ...(animate ? [prefix === "my" ? "slide-in-my" : "slide-in-enemy"] : []));
+  }, 80);
 }
 
 function triggerAttackEffect(atkPfx, defPfx) {
   return new Promise(resolve => {
-    const atkArea = document.getElementById(`${atkPfx}-pokemon-area`)
-    const defArea = document.getElementById(`${defPfx}-pokemon-area`)
-    const wrapper = document.getElementById("battle-wrapper")
-    if (atkArea) { atkArea.classList.add("attacker-flash"); atkArea.addEventListener("animationend", () => atkArea.classList.remove("attacker-flash"), { once: true }) }
-    if (wrapper) { wrapper.classList.add("screen-shake"); wrapper.addEventListener("animationend", () => wrapper.classList.remove("screen-shake"), { once: true }) }
+    const atkArea = document.getElementById(`${atkPfx}-pokemon-area`);
+    const defArea = document.getElementById(`${defPfx}-pokemon-area`);
+    const wrapper = document.getElementById("battle-wrapper");
+    if (atkArea) { atkArea.classList.add("attacker-flash"); atkArea.addEventListener("animationend", () => atkArea.classList.remove("attacker-flash"), { once: true }); }
+    if (wrapper) { wrapper.classList.add("screen-shake"); wrapper.addEventListener("animationend", () => wrapper.classList.remove("screen-shake"), { once: true }); }
     setTimeout(() => {
-      if (defArea) { defArea.classList.add("defender-hit"); defArea.addEventListener("animationend", () => { defArea.classList.remove("defender-hit"); resolve() }, { once: true }) }
-      else resolve()
-    }, 120)
-  })
+      if (defArea) { defArea.classList.add("defender-hit"); defArea.addEventListener("animationend", () => { defArea.classList.remove("defender-hit"); resolve(); }, { once: true }); }
+      else resolve();
+    }, 120);
+  });
 }
 
 function triggerBlink(prefix) {
   return new Promise(resolve => {
-    const area = document.getElementById(`${prefix}-pokemon-area`)
-    if (!area) { resolve(); return }
-    area.classList.add("blink-damage")
-    area.addEventListener("animationend", () => { area.classList.remove("blink-damage"); resolve() }, { once: true })
-  })
+    const area = document.getElementById(`${prefix}-pokemon-area`);
+    if (!area) { resolve(); return; }
+    area.classList.add("blink-damage");
+    area.addEventListener("animationend", () => { area.classList.remove("blink-damage"); resolve(); }, { once: true });
+  });
 }
 
 // ── 타이핑 큐
-let typingQueue = [], isTyping = false
+let typingQueue = [], isTyping = false;
 
 function processQueue() {
-  if (isTyping || typingQueue.length === 0) return
-  isTyping = true
-  const { text, resolve } = typingQueue.shift()
-  const log = document.getElementById("battle-log")
-  if (!log) { isTyping = false; if (resolve) resolve(); processQueue(); return }
-  const line = document.createElement("p"); log.appendChild(line)
-  const chars = [...text]; let i = 0
+  if (isTyping || typingQueue.length === 0) return;
+  isTyping = true;
+  const { text, resolve } = typingQueue.shift();
+  const log = document.getElementById("battle-log");
+  if (!log) { isTyping = false; if (resolve) resolve(); processQueue(); return; }
+  const line = document.createElement("p"); log.appendChild(line);
+  const chars = [...text]; let i = 0;
   function typeNext() {
-    if (i >= chars.length) { isTyping = false; if (resolve) resolve(); setTimeout(processQueue, 80); return }
-    line.textContent += chars[i++]; log.scrollTop = log.scrollHeight; setTimeout(typeNext, 18)
+    if (i >= chars.length) { isTyping = false; if (resolve) resolve(); setTimeout(processQueue, 80); return; }
+    line.textContent += chars[i++]; log.scrollTop = log.scrollHeight; setTimeout(typeNext, 18);
   }
-  typeNext()
+  typeNext();
 }
 
 // ── 로그 추가: gameRef 문서의 logs 배열에 arrayUnion
 async function addLog(text) {
-  if (!gameRef) return
-  await updateDoc(gameRef, { logs: arrayUnion({ text, ts: Date.now() }) })
+  if (!gameRef) return;
+  await updateDoc(gameRef, { logs: arrayUnion({ text, ts: Date.now() }) });
 }
 async function addLogs(lines) {
-  if (!gameRef) return
-  const base = Date.now()
+  if (!gameRef) return;
+  const base = Date.now();
   // arrayUnion은 한 번에 여러 항목 가능
-  const items = lines.map((text, i) => ({ text, ts: base + i }))
-  await updateDoc(gameRef, { logs: arrayUnion(...items) })
+  const items = lines.map((text, i) => ({ text, ts: base + i }));
+  await updateDoc(gameRef, { logs: arrayUnion(...items) });
 }
 
 // ── 로그 리스닝: gameRef onSnapshot → 새 항목만 타이핑
@@ -240,50 +240,50 @@ function listenLogs() {
 
 function animateDiceSingle(slot, finalRoll, p1Name, p2Name) {
   return new Promise(resolve => {
-    const wrap = document.getElementById("dice-wrap")
-    const p1Box = document.getElementById("dice-box-p1"), p2Box = document.getElementById("dice-box-p2")
-    const diceEl = document.getElementById(slot === "p1" ? "dice-p1" : "dice-p2")
-    const nameEl = document.getElementById(slot === "p1" ? "p1-name-dice" : "p2-name-dice")
-    if (!wrap || !diceEl) { resolve(); return }
-    if (p1Box) p1Box.style.display = slot === "p1" ? "block" : "none"
-    if (p2Box) p2Box.style.display = slot === "p2" ? "block" : "none"
-    if (nameEl) nameEl.innerText = slot === "p1" ? (p1Name ?? "Player1") : (p2Name ?? "Player2")
-    wrap.style.display = "flex"
-    let count = 0
+    const wrap = document.getElementById("dice-wrap");
+    const p1Box = document.getElementById("dice-box-p1"), p2Box = document.getElementById("dice-box-p2");
+    const diceEl = document.getElementById(slot === "p1" ? "dice-p1" : "dice-p2");
+    const nameEl = document.getElementById(slot === "p1" ? "p1-name-dice" : "p2-name-dice");
+    if (!wrap || !diceEl) { resolve(); return; }
+    if (p1Box) p1Box.style.display = slot === "p1" ? "block" : "none";
+    if (p2Box) p2Box.style.display = slot === "p2" ? "block" : "none";
+    if (nameEl) nameEl.innerText = slot === "p1" ? (p1Name ?? "Player1") : (p2Name ?? "Player2");
+    wrap.style.display = "flex";
+    let count = 0;
     const iv = setInterval(() => {
-      diceEl.innerText = rollD10(); count++
+      diceEl.innerText = rollD10(); count++;
       if (count >= 16) {
-        clearInterval(iv); diceEl.innerText = finalRoll
-        popDiceNum(diceEl); playSound(SFX_DICE)
-        setTimeout(() => { wrap.style.display = "none"; resolve() }, 1000)
+        clearInterval(iv); diceEl.innerText = finalRoll;
+        popDiceNum(diceEl); playSound(SFX_DICE);
+        setTimeout(() => { wrap.style.display = "none"; resolve(); }, 1000);
       }
-    }, 60)
-  })
+    }, 60);
+  });
 }
 
 function animateDualDice(p1Roll, p2Roll, onDone, p1Name, p2Name) {
-  const p1El = document.getElementById("dice-p1"), p2El = document.getElementById("dice-p2")
-  const wrap = document.getElementById("dice-wrap")
-  const p1Box = document.getElementById("dice-box-p1"), p2Box = document.getElementById("dice-box-p2")
-  const p1NameEl = document.getElementById("p1-name-dice"), p2NameEl = document.getElementById("p2-name-dice")
-  if (!wrap) { onDone(); return }
-  if (p1NameEl) p1NameEl.innerText = p1Name ?? "Player1"
-  if (p2NameEl) p2NameEl.innerText = p2Name ?? "Player2"
-  if (p1Box) p1Box.style.display = "block"
-  if (p2Box) p2Box.style.display = "block"
-  wrap.style.display = "flex"
-  let count = 0
+  const p1El = document.getElementById("dice-p1"), p2El = document.getElementById("dice-p2");
+  const wrap = document.getElementById("dice-wrap");
+  const p1Box = document.getElementById("dice-box-p1"), p2Box = document.getElementById("dice-box-p2");
+  const p1NameEl = document.getElementById("p1-name-dice"), p2NameEl = document.getElementById("p2-name-dice");
+  if (!wrap) { onDone(); return; }
+  if (p1NameEl) p1NameEl.innerText = p1Name ?? "Player1";
+  if (p2NameEl) p2NameEl.innerText = p2Name ?? "Player2";
+  if (p1Box) p1Box.style.display = "block";
+  if (p2Box) p2Box.style.display = "block";
+  wrap.style.display = "flex";
+  let count = 0;
   const iv = setInterval(() => {
-    if (p1El) p1El.innerText = rollD10()
-    if (p2El) p2El.innerText = rollD10()
+    if (p1El) p1El.innerText = rollD10();
+    if (p2El) p2El.innerText = rollD10();
     if (++count >= 22) {
-      clearInterval(iv)
-      if (p1El) p1El.innerText = p1Roll
-      if (p2El) p2El.innerText = p2Roll
-      popDiceNum(p1Roll >= p2Roll ? p1El : p2El); playSound(SFX_DICE)
-      setTimeout(() => { wrap.style.display = "none"; onDone() }, 1800)
+      clearInterval(iv);
+      if (p1El) p1El.innerText = p1Roll;
+      if (p2El) p2El.innerText = p2Roll;
+      popDiceNum(p1Roll >= p2Roll ? p1El : p2El); playSound(SFX_DICE);
+      setTimeout(() => { wrap.style.display = "none"; onDone(); }, 1800);
     }
-  }, 60)
+  }, 60);
 }
 
 onAuthStateChanged(auth, async user => {
